@@ -1,8 +1,7 @@
-// FilesPage.js
 import React, { useState, useEffect } from 'react';
 import './FilesPage.css';
 
-export const FilesPage = () => {
+const FilesPage = () => {
   const [files, setFiles] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [viewMode, setViewMode] = useState('grid');
@@ -117,3 +116,5 @@ export const FilesPage = () => {
     </div>
   );
 };
+
+export default FilesPage;
