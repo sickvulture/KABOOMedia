@@ -1,8 +1,7 @@
-// JoinNetworkPage.js
 import React, { useState } from 'react';
 import './JoinNetworkPage.css';
 
-export const JoinNetworkPage = () => {
+const JoinNetworkPage = () => {
   const [networkCode, setNetworkCode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
 
@@ -61,3 +60,5 @@ export const JoinNetworkPage = () => {
     </div>
   );
 };
+
+export default JoinNetworkPage;
