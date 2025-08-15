@@ -1,8 +1,7 @@
-// ProfilePage.js
 import React, { useState } from 'react';
 import './ProfilePage.css';
 
-export const ProfilePage = () => {
+const ProfilePage = () => {
   const [profile, setProfile] = useState({
     username: 'user123',
     displayName: 'John Doe',
@@ -82,3 +81,5 @@ export const ProfilePage = () => {
     </div>
   );
 };
+
+export default ProfilePage;
