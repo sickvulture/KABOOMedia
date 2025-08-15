@@ -88,9 +88,6 @@
     "node-canvas-webgl": "^0.2.0",
     "sharp-ico": "^0.1.5"
   },
-  "peerDependencies": {
-    "ffmpeg": ">=4.0.0"
-  },
   "os": [
     "linux",
     "darwin",
