@@ -1,8 +1,7 @@
-// SettingsPage.js
 import React, { useState } from 'react';
 import './SettingsPage.css';
 
-export const SettingsPage = () => {
+const SettingsPage = () => {
   const [settings, setSettings] = useState({
     privacy: {
       allowDiscovery: true,
@@ -230,3 +229,5 @@ export const SettingsPage = () => {
     </div>
   );
 };
+
+export default SettingsPage;
