@@ -89,6 +89,10 @@
             animation: pulse 2s infinite;
         }
 
+        .status-dot.p2p {
+            background-color: var(--secondary-color);
+        }
+
         @keyframes pulse {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -226,6 +230,26 @@
             transform: none;
         }
 
+        .btn-secondary {
+            background-color: var(--text-light);
+            color: white;
+        }
+
+        .btn-success {
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        .btn-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+
+        .btn-small {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+        }
+
         /* Posts */
         .posts-container {
             max-height: 600px;
@@ -246,6 +270,10 @@
             border-bottom: none;
         }
 
+        .post.remote {
+            border-left: 4px solid var(--secondary-color);
+        }
+
         .post-header {
             display: flex;
             justify-content: space-between;
@@ -256,6 +284,10 @@
         .post-author {
             font-weight: 600;
             color: var(--primary-color);
+        }
+
+        .post-author.remote {
+            color: var(--secondary-color);
         }
 
         .post-time {
@@ -345,8 +377,100 @@
             background-color: var(--success-color);
         }
 
+        .connection-status.offline {
+            background-color: var(--text-light);
+        }
+
         .connection-name {
             font-weight: 500;
+            flex-grow: 1;
+        }
+
+        .connection-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        /* QR Code Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--surface-color);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-light);
+        }
+
+        .qr-container {
+            margin: 2rem 0;
+        }
+
+        .qr-code {
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin: 0 auto;
+        }
+
+        /* Connection Form */
+        .connection-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .form-input {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
         }
 
         /* Loading */
@@ -398,6 +522,10 @@
                 gap: 10px;
                 align-items: stretch;
             }
+
+            .modal-content {
+                margin: 1rem;
+            }
         }
 
         /* Animations */
@@ -430,9 +558,32 @@
             background-color: var(--accent-color);
         }
 
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+
         @keyframes slideIn {
             from { transform: translateX(100%); }
             to { transform: translateX(0); }
+        }
+
+        /* P2P Status Indicators */
+        .p2p-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.5rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: var(--border-radius);
+            font-size: 0.8rem;
+        }
+
+        .peer-count {
+            background: var(--secondary-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
         }
     </style>
 </head>
@@ -446,6 +597,11 @@
                     <div class="status-indicator">
                         <div class="status-dot"></div>
                         <span id="connectionStatus">Online</span>
+                    </div>
+                    <div class="status-indicator">
+                        <div class="status-dot p2p"></div>
+                        <span id="p2pStatus">P2P Ready</span>
+                        <span class="peer-count" id="peerCount">0</span>
                     </div>
                 </div>
                 <div class="node-status">
@@ -461,6 +617,7 @@
             <div class="nav-content">
                 <div class="nav-item active" data-section="feed">Feed</div>
                 <div class="nav-item" data-section="connections">Connections</div>
+                <div class="nav-item" data-section="connect">Connect</div>
                 <div class="nav-item" data-section="settings">Settings</div>
             </div>
         </div>
@@ -471,37 +628,124 @@
         <div class="container">
             <div class="content-grid">
                 <!-- Feed Section -->
-                <div class="feed-section">
-                    <div class="section-header">
-                        <h2 class="section-title">Content Feed</h2>
-                        <p class="section-subtitle">Share your thoughts with your network</p>
-                    </div>
+                <div class="content-section" id="feedSection">
+                    <div class="feed-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Content Feed</h2>
+                            <p class="section-subtitle">Share your thoughts with your network</p>
+                            <div class="p2p-status">
+                                <span>🌐 Decentralized Network Active</span>
+                                <span id="networkStatus">Discovering peers...</span>
+                            </div>
+                        </div>
 
-                    <!-- Post Creator -->
-                    <div class="post-creator">
-                        <form class="post-form" id="postForm">
-                            <textarea 
-                                class="post-textarea" 
-                                id="postContent" 
-                                placeholder="What's on your mind? Share your thoughts with your network..."
-                                maxlength="2000"
-                            ></textarea>
-                            <div class="post-controls">
-                                <select class="permission-select" id="postPermissions">
-                                    <option value="friends_only">Friends Only</option>
-                                    <option value="public">Public</option>
-                                    <option value="private">Private</option>
-                                </select>
-                                <button type="submit" class="btn btn-primary" id="publishBtn">
-                                    Publish Post
+                        <!-- Post Creator -->
+                        <div class="post-creator">
+                            <form class="post-form" id="postForm">
+                                <textarea 
+                                    class="post-textarea" 
+                                    id="postContent" 
+                                    placeholder="What's on your mind? Share your thoughts with your network..."
+                                    maxlength="2000"
+                                ></textarea>
+                                <div class="post-controls">
+                                    <select class="permission-select" id="postPermissions">
+                                        <option value="friends_only">Friends Only</option>
+                                        <option value="public">Public</option>
+                                        <option value="private">Private</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary" id="publishBtn">
+                                        Publish Post
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Posts Container -->
+                        <div class="posts-container" id="postsContainer">
+                            <div class="loading" id="feedLoading">Loading posts</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connections Section -->
+                <div class="content-section" id="connectionsSection" style="display: none;">
+                    <div class="feed-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Network Connections</h2>
+                            <p class="section-subtitle">Manage your peer connections</p>
+                        </div>
+                        <div class="sidebar-content">
+                            <div id="connectionsContainer">
+                                <div class="loading">Loading connections...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connect Section -->
+                <div class="content-section" id="connectSection" style="display: none;">
+                    <div class="feed-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Connect to Peers</h2>
+                            <p class="section-subtitle">Add new connections to your network</p>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="connection-form">
+                                <div class="form-group">
+                                    <label class="form-label">QR Code or Connection Data:</label>
+                                    <textarea 
+                                        class="form-input form-textarea" 
+                                        id="connectionInput"
+                                        placeholder="Paste QR code data or connection string here..."
+                                    ></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="connectToPeer()">
+                                    Connect to Peer
                                 </button>
                             </div>
-                        </form>
+                            
+                            <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border-color);">
+                            
+                            <div class="form-group">
+                                <label class="form-label">Share Your Connection:</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <button class="btn btn-secondary" onclick="generateQRCode('permanent')">
+                                        Generate QR Code
+                                    </button>
+                                    <button class="btn btn-warning" onclick="generateQRCode('temporary')">
+                                        Temporary Code
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                </div>
 
-                    <!-- Posts Container -->
-                    <div class="posts-container" id="postsContainer">
-                        <div class="loading" id="feedLoading">Loading posts</div>
+                <!-- Settings Section -->
+                <div class="content-section" id="settingsSection" style="display: none;">
+                    <div class="feed-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Node Settings</h2>
+                            <p class="section-subtitle">Configure your KABOOMedia node</p>
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="node-info-item">
+                                <span class="node-info-label">Display Name:</span>
+                                <span class="node-info-value" id="settingsDisplayName">Loading...</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">Discovery:</span>
+                                <span class="node-info-value" id="settingsDiscovery">Loading...</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">P2P Port:</span>
+                                <span class="node-info-value" id="settingsP2PPort">Loading...</span>
+                            </div>
+                            <button class="btn btn-warning" style="width: 100%; margin-top: 1rem;" onclick="exportData()">
+                                Export Node Data
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -517,14 +761,14 @@
                             </div>
                             <div class="node-info-item">
                                 <span class="node-info-label">Version:</span>
-                                <span class="node-info-value" id="nodeVersion">1.0.0</span>
+                                <span class="node-info-value" id="nodeVersion">1.1.0</span>
                             </div>
                             <div class="node-info-item">
                                 <span class="node-info-label">Uptime:</span>
                                 <span class="node-info-value" id="nodeUptime">0s</span>
                             </div>
                             <div class="node-info-item">
-                                <span class="node-info-label">Connections:</span>
+                                <span class="node-info-label">P2P Peers:</span>
                                 <span class="node-info-value" id="connectionCount">0</span>
                             </div>
                             <div class="node-info-item">
@@ -534,33 +778,52 @@
                         </div>
                     </div>
 
-                    <!-- Active Connections -->
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">Active Connections</div>
-                        <div class="sidebar-content" id="connectionsContainer">
-                            <div class="empty-state">
-                                <p>No active connections</p>
-                                <small>Share your node address to connect with others</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Quick Actions -->
+                    <!-- Quick P2P Actions -->
                     <div class="sidebar-section">
                         <div class="sidebar-header">Quick Actions</div>
                         <div class="sidebar-content">
-                            <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="generateQRCode()">
-                                Generate QR Code
+                            <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="generateQRCode('permanent')">
+                                🔗 Share Connection
                             </button>
-                            <button class="btn" style="width: 100%; background: var(--warning-color); color: white;" onclick="exportData()">
-                                Export Data
+                            <button class="btn btn-secondary" style="width: 100%; margin-bottom: 10px;" onclick="refreshConnections()">
+                                🔄 Refresh Network
                             </button>
+                            <button class="btn btn-success" style="width: 100%;" onclick="toggleDiscovery()">
+                                📡 Toggle Discovery
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recent Connections -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">Recent Connections</div>
+                        <div class="sidebar-content" id="recentConnectionsContainer">
+                            <div class="empty-state">
+                                <p>No recent connections</p>
+                                <small>Connect with peers to see them here</small>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </main>
+
+    <!-- QR Code Modal -->
+    <div class="modal" id="qrModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="qrModalTitle">Share Connection</h3>
+                <button class="modal-close" onclick="closeQRModal()">&times;</button>
+            </div>
+            <div class="qr-container">
+                <div id="qrCodeDisplay"></div>
+                <p id="qrDescription">Scan this QR code to connect</p>
+                <div id="qrCodeData" style="font-family: monospace; font-size: 0.8rem; word-break: break-all; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: var(--border-radius);"></div>
+            </div>
+            <button class="btn btn-secondary" onclick="copyQRData()">Copy Connection Data</button>
+        </div>
+    </div>
 
     <script>
         class KABOOMediaClient {
@@ -570,6 +833,7 @@
                 this.connections = [];
                 this.currentSection = 'feed';
                 this.refreshInterval = null;
+                this.qrData = null;
                 
                 this.init();
             }
@@ -611,6 +875,13 @@
                 if (textarea) {
                     textarea.addEventListener('input', this.autoResizeTextarea);
                 }
+
+                // Modal close on background click
+                document.getElementById('qrModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'qrModal') {
+                        this.closeQRModal();
+                    }
+                });
             }
 
             async loadNodeInfo() {
@@ -622,138 +893,6 @@
                     this.updateNodeDisplay();
                 } catch (error) {
                     console.error('Error loading node info:', error);
-                    this.showNotification('Failed to load node information', 'error');
-                }
-            }
-
-            updateNodeDisplay() {
-                if (!this.nodeInfo) return;
-
-                // Update header
-                const nodeId = document.getElementById('nodeId');
-                if (nodeId) {
-                    nodeId.textContent = this.nodeInfo.node_id.substring(0, 16) + '...';
-                    nodeId.title = this.nodeInfo.node_id;
-                }
-
-                // Update sidebar
-                const elements = {
-                    nodeStatus: this.nodeInfo.status,
-                    nodeVersion: this.nodeInfo.version,
-                    nodeUptime: this.formatUptime(this.nodeInfo.uptime),
-                    connectionCount: this.nodeInfo.connections
-                };
-
-                Object.entries(elements).forEach(([id, value]) => {
-                    const element = document.getElementById(id);
-                    if (element) element.textContent = value;
-                });
-            }
-
-            async loadFeed() {
-                try {
-                    const feedLoading = document.getElementById('feedLoading');
-                    const postsContainer = document.getElementById('postsContainer');
-                    
-                    if (feedLoading) feedLoading.style.display = 'block';
-
-                    const response = await fetch('/api/feed?limit=20');
-                    if (!response.ok) throw new Error('Failed to fetch feed');
-                    
-                    const data = await response.json();
-                    this.posts = data.posts;
-                    
-                    this.renderPosts();
-                    
-                    if (feedLoading) feedLoading.style.display = 'none';
-                } catch (error) {
-                    console.error('Error loading feed:', error);
-                    this.showNotification('Failed to load feed', 'error');
-                    
-                    const feedLoading = document.getElementById('feedLoading');
-                    if (feedLoading) {
-                        feedLoading.textContent = 'Failed to load posts';
-                        feedLoading.classList.remove('loading');
-                    }
-                }
-            }
-
-            renderPosts() {
-                const postsContainer = document.getElementById('postsContainer');
-                if (!postsContainer) return;
-
-                if (this.posts.length === 0) {
-                    postsContainer.innerHTML = `
-                        <div class="empty-state">
-                            <h3>No posts yet</h3>
-                            <p>Be the first to share something with your network!</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                const postsHTML = this.posts.map(post => this.renderPost(post)).join('');
-                postsContainer.innerHTML = postsHTML;
-            }
-
-            renderPost(post) {
-                const timeAgo = this.formatTimeAgo(post.timestamp);
-                const authorName = post.author_id === this.nodeInfo?.node_id ? 'You' : 'Connected User';
-                
-                return `
-                    <div class="post fade-in">
-                        <div class="post-header">
-                            <span class="post-author">${authorName}</span>
-                            <span class="post-time">${timeAgo}</span>
-                        </div>
-                        <div class="post-content">${this.escapeHtml(post.content)}</div>
-                        <div class="post-actions">
-                            <span class="post-action" onclick="client.likePost('${post.id}')">👍 Like</span>
-                            <span class="post-action" onclick="client.commentOnPost('${post.id}')">💬 Comment</span>
-                            <span class="post-action" onclick="client.sharePost('${post.id}')">🔄 Share</span>
-                        </div>
-                    </div>
-                `;
-            }
-
-            async publishPost() {
-                const contentTextarea = document.getElementById('postContent');
-                const permissionsSelect = document.getElementById('postPermissions');
-                const publishBtn = document.getElementById('publishBtn');
-                
-                if (!contentTextarea || !permissionsSelect || !publishBtn) return;
-
-                const content = contentTextarea.value.trim();
-                if (!content) {
-                    this.showNotification('Please enter some content', 'error');
-                    return;
-                }
-
-                publishBtn.disabled = true;
-                publishBtn.textContent = 'Publishing...';
-
-                try {
-                    const response = await fetch('/api/content', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            content: content,
-                            permissions: permissionsSelect.value
-                        })
-                    });
-
-                    if (!response.ok) throw new Error('Failed to publish post');
-
-                    const result = await response.json();
-                    
-                    // Clear form
-                    contentTextarea.value = '';
-                    
-                    // Reload feed
-                    await this.loadFeed();
-                    
                     this.showNotification('Post published successfully!', 'success');
                 } catch (error) {
                     console.error('Error publishing post:', error);
@@ -773,6 +912,7 @@
                     this.connections = data.connections;
                     
                     this.renderConnections();
+                    this.renderRecentConnections();
                 } catch (error) {
                     console.error('Error loading connections:', error);
                 }
@@ -785,8 +925,8 @@
                 if (this.connections.length === 0) {
                     connectionsContainer.innerHTML = `
                         <div class="empty-state">
-                            <p>No active connections</p>
-                            <small>Share your node address to connect with others</small>
+                            <p>No connections yet</p>
+                            <small>Use the Connect tab to add peers to your network</small>
                         </div>
                     `;
                     return;
@@ -794,12 +934,44 @@
 
                 const connectionsHTML = this.connections.map(connection => `
                     <div class="connection-item">
-                        <div class="connection-status"></div>
+                        <div class="connection-status ${connection.is_online ? '' : 'offline'}"></div>
                         <div class="connection-name">${this.escapeHtml(connection.display_name)}</div>
+                        <div class="connection-actions">
+                            ${connection.is_online ? 
+                                `<button class="btn btn-small btn-warning" onclick="client.disconnectPeer('${connection.node_id}')">Disconnect</button>` :
+                                `<button class="btn btn-small btn-secondary" onclick="client.reconnectPeer('${connection.node_id}')">Reconnect</button>`
+                            }
+                        </div>
                     </div>
                 `).join('');
 
                 connectionsContainer.innerHTML = connectionsHTML;
+            }
+
+            renderRecentConnections() {
+                const container = document.getElementById('recentConnectionsContainer');
+                if (!container) return;
+
+                const recent = this.connections.slice(0, 3);
+                
+                if (recent.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p>No recent connections</p>
+                            <small>Connect with peers to see them here</small>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const html = recent.map(conn => `
+                    <div class="connection-item">
+                        <div class="connection-status ${conn.is_online ? '' : 'offline'}"></div>
+                        <div class="connection-name">${this.escapeHtml(conn.display_name)}</div>
+                    </div>
+                `).join('');
+
+                container.innerHTML = html;
             }
 
             switchSection(section) {
@@ -808,6 +980,24 @@
                     item.classList.remove('active');
                 });
                 document.querySelector(`[data-section="${section}"]`).classList.add('active');
+
+                // Hide all sections
+                document.querySelectorAll('.content-section').forEach(sec => {
+                    sec.style.display = 'none';
+                });
+
+                // Show selected section
+                const sectionMap = {
+                    'feed': 'feedSection',
+                    'connections': 'connectionsSection',
+                    'connect': 'connectSection',
+                    'settings': 'settingsSection'
+                };
+
+                const targetSection = document.getElementById(sectionMap[section]);
+                if (targetSection) {
+                    targetSection.style.display = 'block';
+                }
 
                 this.currentSection = section;
 
@@ -819,10 +1009,149 @@
                     case 'connections':
                         this.loadConnections();
                         break;
+                    case 'connect':
+                        // Connection section loaded
+                        break;
                     case 'settings':
-                        // TODO: Implement settings view
+                        this.updateSettingsDisplay();
                         break;
                 }
+            }
+
+            async connectToPeer() {
+                const input = document.getElementById('connectionInput');
+                if (!input) return;
+
+                const connectionData = input.value.trim();
+                if (!connectionData) {
+                    this.showNotification('Please enter connection data', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/connect', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            qrCode: connectionData.startsWith('KABOO:') ? connectionData : null,
+                            connectionData: !connectionData.startsWith('KABOO:') ? JSON.parse(connectionData) : null
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Connection failed');
+                    }
+
+                    const result = await response.json();
+                    
+                    input.value = '';
+                    this.showNotification(`Connected to ${result.display_name}!`, 'success');
+                    
+                    // Refresh connections
+                    await this.loadConnections();
+                    await this.loadNodeInfo();
+                    
+                } catch (error) {
+                    console.error('Error connecting to peer:', error);
+                    this.showNotification(`Connection failed: ${error.message}`, 'error');
+                }
+            }
+
+            async disconnectPeer(nodeId) {
+                try {
+                    const response = await fetch(`/api/disconnect/${nodeId}`, {
+                        method: 'POST'
+                    });
+
+                    if (!response.ok) throw new Error('Disconnect failed');
+
+                    this.showNotification('Peer disconnected', 'success');
+                    await this.loadConnections();
+                    await this.loadNodeInfo();
+                    
+                } catch (error) {
+                    console.error('Error disconnecting peer:', error);
+                    this.showNotification('Failed to disconnect peer', 'error');
+                }
+            }
+
+            async reconnectPeer(nodeId) {
+                this.showNotification('Reconnection feature coming soon!', 'warning');
+            }
+
+            async generateQRCode(type = 'permanent') {
+                try {
+                    const params = type === 'temporary' ? '?type=temporary&expires=30' : '?type=permanent';
+                    const response = await fetch(`/api/qr/generate${params}`);
+                    
+                    if (!response.ok) throw new Error('Failed to generate QR code');
+                    
+                    const data = await response.json();
+                    this.showQRModal(data, type);
+                    
+                } catch (error) {
+                    console.error('Error generating QR code:', error);
+                    this.showNotification('Failed to generate QR code', 'error');
+                }
+            }
+
+            showQRModal(qrData, type) {
+                this.qrData = qrData;
+                
+                const modal = document.getElementById('qrModal');
+                const title = document.getElementById('qrModalTitle');
+                const display = document.getElementById('qrCodeDisplay');
+                const description = document.getElementById('qrDescription');
+                const dataDiv = document.getElementById('qrCodeData');
+                
+                title.textContent = type === 'temporary' ? 'Temporary Connection Code' : 'Share Connection';
+                
+                if (qrData.svg) {
+                    display.innerHTML = qrData.svg;
+                } else {
+                    display.innerHTML = '<div style="width: 200px; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; margin: 0 auto;">QR Code</div>';
+                }
+                
+                if (type === 'temporary') {
+                    const expiresAt = new Date(qrData.expires_at).toLocaleString();
+                    description.textContent = `This code expires at ${expiresAt}`;
+                } else {
+                    description.textContent = 'Scan this QR code to connect to your node';
+                }
+                
+                dataDiv.textContent = qrData.qr_data;
+                
+                modal.classList.add('show');
+            }
+
+            closeQRModal() {
+                const modal = document.getElementById('qrModal');
+                modal.classList.remove('show');
+                this.qrData = null;
+            }
+
+            copyQRData() {
+                if (!this.qrData) return;
+                
+                navigator.clipboard.writeText(this.qrData.qr_data).then(() => {
+                    this.showNotification('Connection data copied to clipboard!', 'success');
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    this.showNotification('Failed to copy to clipboard', 'error');
+                });
+            }
+
+            async refreshConnections() {
+                this.showNotification('Refreshing network...', 'success');
+                await this.loadConnections();
+                await this.loadNodeInfo();
+            }
+
+            toggleDiscovery() {
+                this.showNotification('Discovery toggle feature coming soon!', 'warning');
             }
 
             startPeriodicUpdates() {
@@ -831,6 +1160,9 @@
                     this.loadNodeInfo();
                     if (this.currentSection === 'feed') {
                         this.loadFeed();
+                    }
+                    if (this.currentSection === 'connections') {
+                        this.loadConnections();
                     }
                 }, 30000);
             }
@@ -895,9 +1227,28 @@
         }
 
         // Global functions for button actions
-        function generateQRCode() {
-            console.log('Generate QR Code');
-            client.showNotification('QR Code generation coming in Phase 2!');
+        function connectToPeer() {
+            client.connectToPeer();
+        }
+
+        function generateQRCode(type = 'permanent') {
+            client.generateQRCode(type);
+        }
+
+        function closeQRModal() {
+            client.closeQRModal();
+        }
+
+        function copyQRData() {
+            client.copyQRData();
+        }
+
+        function refreshConnections() {
+            client.refreshConnections();
+        }
+
+        function toggleDiscovery() {
+            client.toggleDiscovery();
         }
 
         function exportData() {
@@ -919,4 +1270,183 @@
         });
     </script>
 </body>
-</html>
+</html>Notification('Failed to load node information', 'error');
+                }
+            }
+
+            updateNodeDisplay() {
+                if (!this.nodeInfo) return;
+
+                // Update header
+                const nodeId = document.getElementById('nodeId');
+                if (nodeId) {
+                    nodeId.textContent = this.nodeInfo.node_id.substring(0, 16) + '...';
+                    nodeId.title = this.nodeInfo.node_id;
+                }
+
+                // Update P2P status
+                const p2pStatus = document.getElementById('p2pStatus');
+                const peerCount = document.getElementById('peerCount');
+                const networkStatus = document.getElementById('networkStatus');
+                
+                if (p2pStatus) {
+                    p2pStatus.textContent = this.nodeInfo.p2p_status === 'enabled' ? 'P2P Active' : 'P2P Disabled';
+                }
+                
+                if (peerCount) {
+                    peerCount.textContent = this.nodeInfo.peer_count || 0;
+                }
+                
+                if (networkStatus) {
+                    networkStatus.textContent = this.nodeInfo.peer_count > 0 ? 
+                        `Connected to ${this.nodeInfo.peer_count} peers` : 
+                        'Discovering peers...';
+                }
+
+                // Update sidebar
+                const elements = {
+                    nodeStatus: this.nodeInfo.status,
+                    nodeVersion: this.nodeInfo.version,
+                    nodeUptime: this.formatUptime(this.nodeInfo.uptime),
+                    connectionCount: this.nodeInfo.peer_count || 0
+                };
+
+                Object.entries(elements).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                });
+
+                // Update settings
+                this.updateSettingsDisplay();
+            }
+
+            async updateSettingsDisplay() {
+                try {
+                    const response = await fetch('/api/config');
+                    if (!response.ok) throw new Error('Failed to fetch config');
+                    
+                    const config = await response.json();
+                    
+                    const settingsElements = {
+                        settingsDisplayName: config.display_name,
+                        settingsDiscovery: config.discovery_enabled ? 'Enabled' : 'Disabled',
+                        settingsP2PPort: (parseInt(this.nodeInfo.version?.split('.')[0]) || 8080) + 1
+                    };
+
+                    Object.entries(settingsElements).forEach(([id, value]) => {
+                        const element = document.getElementById(id);
+                        if (element) element.textContent = value;
+                    });
+                } catch (error) {
+                    console.error('Error loading config:', error);
+                }
+            }
+
+            async loadFeed() {
+                try {
+                    const feedLoading = document.getElementById('feedLoading');
+                    const postsContainer = document.getElementById('postsContainer');
+                    
+                    if (feedLoading) feedLoading.style.display = 'block';
+
+                    const response = await fetch('/api/feed?limit=20&include_remote=true');
+                    if (!response.ok) throw new Error('Failed to fetch feed');
+                    
+                    const data = await response.json();
+                    this.posts = data.posts;
+                    
+                    this.renderPosts();
+                    
+                    if (feedLoading) feedLoading.style.display = 'none';
+                } catch (error) {
+                    console.error('Error loading feed:', error);
+                    this.showNotification('Failed to load feed', 'error');
+                    
+                    const feedLoading = document.getElementById('feedLoading');
+                    if (feedLoading) {
+                        feedLoading.textContent = 'Failed to load posts';
+                        feedLoading.classList.remove('loading');
+                    }
+                }
+            }
+
+            renderPosts() {
+                const postsContainer = document.getElementById('postsContainer');
+                if (!postsContainer) return;
+
+                if (this.posts.length === 0) {
+                    postsContainer.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No posts yet</h3>
+                            <p>Be the first to share something with your network!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const postsHTML = this.posts.map(post => this.renderPost(post)).join('');
+                postsContainer.innerHTML = postsHTML;
+            }
+
+            renderPost(post) {
+                const timeAgo = this.formatTimeAgo(post.timestamp);
+                const isOwn = post.author_id === this.nodeInfo?.node_id;
+                const isRemote = post.is_remote;
+                const authorName = isOwn ? 'You' : (post.author_name || 'Connected User');
+                
+                return `
+                    <div class="post fade-in ${isRemote ? 'remote' : ''}">
+                        <div class="post-header">
+                            <span class="post-author ${isRemote ? 'remote' : ''}">${this.escapeHtml(authorName)}</span>
+                            <span class="post-time">${timeAgo} ${isRemote ? '🌐' : ''}</span>
+                        </div>
+                        <div class="post-content">${this.escapeHtml(post.content)}</div>
+                        <div class="post-actions">
+                            <span class="post-action" onclick="client.likePost('${post.id}')">👍 Like</span>
+                            <span class="post-action" onclick="client.commentOnPost('${post.id}')">💬 Comment</span>
+                            <span class="post-action" onclick="client.sharePost('${post.id}')">🔄 Share</span>
+                            ${isRemote ? '<span class="post-action">🌐 Remote</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            async publishPost() {
+                const contentTextarea = document.getElementById('postContent');
+                const permissionsSelect = document.getElementById('postPermissions');
+                const publishBtn = document.getElementById('publishBtn');
+                
+                if (!contentTextarea || !permissionsSelect || !publishBtn) return;
+
+                const content = contentTextarea.value.trim();
+                if (!content) {
+                    this.showNotification('Please enter some content', 'error');
+                    return;
+                }
+
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+
+                try {
+                    const response = await fetch('/api/content', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            content: content,
+                            permissions: permissionsSelect.value
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to publish post');
+
+                    const result = await response.json();
+                    
+                    // Clear form
+                    contentTextarea.value = '';
+                    
+                    // Reload feed
+                    await this.loadFeed();
+                    
+                    this.show
