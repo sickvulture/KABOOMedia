@@ -1,714 +1,4 @@
-// Render media
-                let mediaHTML = '';
-                if (post.media_refs && post.media_refs.length > 0) {
-                    mediaHTML = `
-                        <div class="post-media">
-                            ${post.media_refs.map(media => `
-                                <div class="post-media-item" onclick="client.openMediaViewer('${media.url}', '${media.mediaType}')">
-                                    ${media.mediaType === 'image' ? 
-                                        `<img src="${media.url}" alt="${media.originalName}">` :
-                                        media.mediaType === 'video' ? 
-                                        `<video src="${media.url}" poster="${media.thumbnailUrl || ''}"></video>` :
-                                        `<div class="media-placeholder">📄 ${media.originalName}</div>`
-                                    }
-                                    <div class="media-overlay">
-                                        ${media.originalName} (${this.formatFileSize(media.size)})
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
-                }
-
-                // Render reactions
-                let reactionsHTML = '';
-                if (post.reactions && Object.keys(post.reactions).length > 0) {
-                    reactionsHTML = `
-                        <div class="post-reactions">
-                            ${Object.entries(post.reactions).map(([reaction, data]) => `
-                                <div class="reaction-item ${data.users.includes(this.nodeInfo?.node_id) ? 'user-reacted' : ''}"
-                                     onclick="client.toggleReaction('${post.id}', '${reaction}')">
-                                    ${reaction} ${data.count}
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
-                }
-
-                // Render comments preview
-                let commentsHTML = '';
-                if (post.comment_preview && post.comment_preview.length > 0) {
-                    commentsHTML = `
-                        <div class="comments-section">
-                            ${post.comment_preview.map(comment => `
-                                <div class="comment">
-                                    <div class="comment-header">
-                                        <span class="comment-author">${comment.author_name}</span>
-                                        <span class="comment-time">${this.formatTimeAgo(comment.timestamp)}</span>
-                                    </div>
-                                    <div class="comment-content">${this.escapeHtml(comment.content)}</div>
-                                </div>
-                            `).join('')}
-                            ${post.comment_count > post.comment_preview.length ? 
-                                `<div style="text-align: center; margin-top: 10px;">
-                                    <button class="btn btn-outline btn-small" onclick="client.showAllComments('${post.id}')">
-                                        View all ${post.comment_count} comments
-                                    </button>
-                                </div>` : ''
-                            }
-                            <div class="comment-form">
-                                <input type="text" class="comment-input" placeholder="Write a comment..." 
-                                       onkeypress="client.handleCommentKeypress(event, '${post.id}')">
-                                <button class="btn btn-primary btn-small" onclick="client.addComment('${post.id}')">
-                                    💬 Comment
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                return `
-                    <div class="post fade-in ${isRemote ? 'remote' : ''}" data-post-id="${post.id}">
-                        <div class="post-header">
-                            <div class="post-author-info">
-                                <span class="post-author ${isRemote ? 'remote' : ''}">${this.escapeHtml(authorName)}</span>
-                                ${isRemote ? '<span class="remote-badge">🌐 Remote</span>' : ''}
-                            </div>
-                            <span class="post-time">${timeAgo}</span>
-                        </div>
-                        <div class="post-content">${this.escapeHtml(post.content)}</div>
-                        ${mediaHTML}
-                        ${reactionsHTML}
-                        <div class="post-actions">
-                            <span class="post-action" onclick="client.showReactionPicker(event, '${post.id}')">
-                                👍 React
-                            </span>
-                            <span class="post-action" onclick="client.focusCommentInput('${post.id}')">
-                                💬 Comment (${post.comment_count || 0})
-                            </span>
-                            <span class="post-action" onclick="client.sharePost('${post.id}')">
-                                🔄 Share
-                            </span>
-                            ${isOwn ? `<span class="post-action" onclick="client.deletePost('${post.id}')">🗑️ Delete</span>` : ''}
-                        </div>
-                        ${commentsHTML}
-                    </div>
-                `;
-            }
-
-            // Chat functionality
-            async loadChatSessions() {
-                try {
-                    const response = await fetch('/api/chat/sessions');
-                    if (!response.ok) throw new Error('Failed to fetch chat sessions');
-                    
-                    const data = await response.json();
-                    this.chatSessions = data.sessions;
-                    
-                    this.renderRecentChats();
-                } catch (error) {
-                    console.error('Error loading chat sessions:', error);
-                }
-            }
-
-            renderRecentChats() {
-                const container = document.getElementById('recentChatsContainer');
-                if (!container) return;
-
-                if (this.chatSessions.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <p>No recent chats</p>
-                            <small>Start a conversation to see it here</small>
-                        </div>
-                    `;
-                    return;
-                }
-
-                const recentChats = this.chatSessions.slice(0, 5);
-                const html = recentChats.map(session => `
-                    <div class="connection-item" onclick="client.openChatSession('${session.id}')">
-                        <div class="connection-status ${session.unread_count > 0 ? '' : 'offline'}"></div>
-                        <div class="connection-name">
-                            ${session.session_name || this.getChatDisplayName(session)}
-                            ${session.unread_count > 0 ? `<span class="peer-count">${session.unread_count}</span>` : ''}
-                        </div>
-                    </div>
-                `).join('');
-
-                container.innerHTML = html;
-            }
-
-            getChatDisplayName(session) {
-                if (session.session_name) return session.session_name;
-                if (session.is_group) return `Group (${session.participants.length})`;
-                
-                const otherParticipant = session.participants.find(p => p.user_id !== this.nodeInfo?.node_id);
-                return otherParticipant ? otherParticipant.user_name : 'Unknown';
-            }
-
-            async openChatSession(sessionId) {
-                this.currentChatSession = sessionId;
-                this.switchSection('chat');
-                
-                try {
-                    // Load session details
-                    const sessionResponse = await fetch(`/api/chat/sessions/${sessionId}`);
-                    const sessionData = await sessionResponse.json();
-                    
-                    // Update chat header
-                    document.getElementById('currentChatName').textContent = 
-                        sessionData.session.session_name || this.getChatDisplayName(sessionData.session);
-                    
-                    // Load messages
-                    await this.loadChatMessages(sessionId);
-                    
-                    // Mark as read
-                    await fetch(`/api/chat/sessions/${sessionId}/read`, { method: 'POST' });
-                    
-                    // Join WebSocket room
-                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                        this.ws.send(JSON.stringify({
-                            type: 'chat:join_session',
-                            sessionId: sessionId
-                        }));
-                    }
-                    
-                } catch (error) {
-                    console.error('Error opening chat session:', error);
-                    this.showNotification('Failed to open chat session', 'error');
-                }
-            }
-
-            async loadChatMessages(sessionId) {
-                try {
-                    const response = await fetch(`/api/chat/sessions/${sessionId}/messages?limit=50`);
-                    if (!response.ok) throw new Error('Failed to fetch messages');
-                    
-                    const data = await response.json();
-                    this.renderChatMessages(data.messages);
-                } catch (error) {
-                    console.error('Error loading chat messages:', error);
-                }
-            }
-
-            renderChatMessages(messages) {
-                const container = document.getElementById('chatMessages');
-                if (!container) return;
-
-                if (messages.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">💬</div>
-                            <h3>No messages yet</h3>
-                            <p>Start the conversation!</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                const messagesHTML = messages.map(message => {
-                    const isOwn = message.sender_id === this.nodeInfo?.node_id;
-                    return `
-                        <div class="chat-message ${isOwn ? 'own' : 'other'}">
-                            ${!isOwn ? `<div class="chat-message-header">${message.sender_name}</div>` : ''}
-                            <div class="chat-message-content">${this.escapeHtml(message.content)}</div>
-                            <div class="chat-message-time">${this.formatTimeAgo(message.timestamp)}</div>
-                        </div>
-                    `;
-                }).join('');
-
-                container.innerHTML = messagesHTML;
-                container.scrollTop = container.scrollHeight;
-            }
-
-            async sendChatMessage() {
-                const input = document.getElementById('chatInput');
-                if (!input || !this.currentChatSession) return;
-
-                const content = input.value.trim();
-                if (!content) return;
-
-                try {
-                    const response = await fetch(`/api/chat/sessions/${this.currentChatSession}/messages`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ content })
-                    });
-
-                    if (!response.ok) throw new Error('Failed to send message');
-
-                    input.value = '';
-                    await this.loadChatMessages(this.currentChatSession);
-                } catch (error) {
-                    console.error('Error sending message:', error);
-                    this.showNotification('Failed to send message', 'error');
-                }
-            }
-
-            handleTyping() {
-                if (!this.currentChatSession || !this.ws) return;
-
-                // Send typing indicator
-                this.ws.send(JSON.stringify({
-                    type: 'chat:typing',
-                    sessionId: this.currentChatSession,
-                    isTyping: true
-                }));
-
-                // Clear previous timeout
-                if (this.typingTimeout) {
-                    clearTimeout(this.typingTimeout);
-                }
-
-                // Stop typing indicator after 2 seconds
-                this.typingTimeout = setTimeout(() => {
-                    this.ws.send(JSON.stringify({
-                        type: 'chat:typing',
-                        sessionId: this.currentChatSession,
-                        isTyping: false
-                    }));
-                }, 2000);
-            }
-
-            // Notification system
-            async loadNotifications() {
-                try {
-                    const response = await fetch('/api/notifications?limit=10');
-                    if (!response.ok) throw new Error('Failed to fetch notifications');
-                    
-                    const data = await response.json();
-                    this.notifications = data.notifications;
-                    
-                    this.updateNotificationBadge();
-                } catch (error) {
-                    console.error('Error loading notifications:', error);
-                }
-            }
-
-            updateNotificationBadge() {
-                const badge = document.getElementById('notificationCount');
-                const unreadCount = this.notifications.filter(n => !n.is_read).length;
-                
-                if (badge) {
-                    if (unreadCount > 0) {
-                        badge.textContent = unreadCount;
-                        badge.style.display = 'flex';
-                    } else {
-                        badge.style.display = 'none';
-                    }
-                }
-            }
-
-            // Section switching
-            switchSection(section) {
-                // Update navigation
-                document.querySelectorAll('.nav-item').forEach(item => {
-                    item.classList.remove('active');
-                });
-                document.querySelector(`[data-section="${section}"]`)?.classList.add('active');
-
-                // Hide all sections
-                document.querySelectorAll('.content-section').forEach(sec => {
-                    sec.style.display = 'none';
-                });
-
-                // Show selected section
-                const sectionMap = {
-                    'feed': 'feedSection',
-                    'chat': 'chatSection',
-                    'media': 'mediaSection',
-                    'connections': 'connectionsSection',
-                    'connect': 'connectSection',
-                    'search': 'searchSection',
-                    'analytics': 'analyticsSection',
-                    'settings': 'settingsSection'
-                };
-
-                const targetSection = document.getElementById(sectionMap[section]);
-                if (targetSection) {
-                    targetSection.style.display = 'block';
-                }
-
-                this.currentSection = section;
-
-                // Load section-specific data
-                this.loadSectionData(section);
-            }
-
-            async loadSectionData(section) {
-                switch (section) {
-                    case 'feed':
-                        await this.loadFeed();
-                        break;
-                    case 'chat':
-                        await this.loadChatSessions();
-                        break;
-                    case 'media':
-                        await this.loadMediaLibrary();
-                        break;
-                    case 'connections':
-                        await this.loadConnections();
-                        break;
-                    case 'analytics':
-                        await this.loadAnalytics();
-                        break;
-                }
-            }
-
-            // Utility methods
-            updateElement(id, content) {
-                const element = document.getElementById(id);
-                if (element) element.textContent = content;
-            }
-
-            formatUptime(seconds) {
-                if (seconds < 60) return `${Math.floor(seconds)}s`;
-                if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-                if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-                return `${Math.floor(seconds / 86400)}d`;
-            }
-
-            formatTimeAgo(timestamp) {
-                const now = Date.now();
-                const diff = now - timestamp;
-                
-                if (diff < 60000) return 'Just now';
-                if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-                if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-                return `${Math.floor(diff / 86400000)}d ago`;
-            }
-
-            formatFileSize(bytes) {
-                if (bytes === 0) return '0 Bytes';
-                const k = 1024;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            }
-
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            autoResizeTextarea(event) {
-                const textarea = event.target;
-                textarea.style.height = 'auto';
-                textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
-            }
-
-            showNotification(message, type = 'success') {
-                const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.textContent = message;
-                
-                document.body.appendChild(notification);
-                
-                setTimeout(() => {
-                    notification.style.animation = 'notificationSlideOut 0.5s ease';
-                    setTimeout(() => notification.remove(), 500);
-                }, 3000);
-            }
-
-            updateWSStatus(connected) {
-                const wsStatus = document.getElementById('wsStatus');
-                if (wsStatus) {
-                    wsStatus.textContent = connected ? 'Connected' : 'Disconnected';
-                    wsStatus.className = `node-info-value status-indicator-value ${connected ? 'online' : 'offline'}`;
-                }
-            }
-
-            startPeriodicUpdates() {
-                this.refreshInterval = setInterval(() => {
-                    this.loadNodeInfo();
-                    if (this.currentSection === 'feed') {
-                        this.loadFeed();
-                    }
-                    
-                    // Send WebSocket heartbeat
-                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                        this.ws.send(JSON.stringify({ type: 'ping' }));
-                    }
-                }, 30000);
-            }
-
-            // Placeholder methods for missing functionality
-            async loadConnections() { /* Implementation from Phase 2 */ }
-            async loadMediaLibrary() { /* Load media files */ }
-            async loadAnalytics() { /* Load analytics data */ }
-            async connectToPeer() { /* Connect to peer functionality */ }
-            async generateQRCode(type) { /* QR code generation */ }
-            
-            // Event handlers for WebSocket messages
-            handleIncomingChatMessage(data) { /* Handle incoming chat messages */ }
-            handleTypingIndicator(data) { /* Handle typing indicators */ }
-            handleRemoteContent(data) { /* Handle remote content */ }
-            handleNewNotification(data) { 
-                this.notifications.unshift(data);
-                this.updateNotificationBadge();
-                this.showNotification(data.title, 'info');
-            }
-        }
-
-        // Global utility functions
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        }
-
-        // Global functions for UI interactions
-        function toggleNotifications() {
-            const modal = document.getElementById('notificationsModal');
-            modal.classList.toggle('show');
-        }
-
-        function createNewChat() {
-            const modal = document.getElementById('newChatModal');
-            modal.classList.add('show');
-        }
-
-        function refreshAll() {
-            client.loadNodeInfo();
-            client.loadFeed();
-            client.loadConnections();
-            client.loadChatSessions();
-            client.showNotification('Refreshed all data', 'success');
-        }
-
-        // Initialize the client when the page loads
-        let client;
-        document.addEventListener('DOMContentLoaded', () => {
-            client = new KABOOMediaPhase3Client();
-        });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (client) {
-                if (client.refreshInterval) {
-                    clearInterval(client.refreshInterval);
-                }
-                if (client.ws) {
-                    client.ws.close();
-                }
-            }
-        });
-    </script>
-</body>
-</html>
-
-            async loadNodeInfo() {
-                try {
-                    const response = await fetch('/api/status');
-                    if (!response.ok) throw new Error('Failed to fetch node status');
-                    
-                    this.nodeInfo = await response.json();
-                    this.updateNodeDisplay();
-                } catch (error) {
-                    console.error('Error loading node info:', error);
-                    this.showNotification('Failed to load node information', 'error');
-                }
-            }
-
-            updateNodeDisplay() {
-                if (!this.nodeInfo) return;
-
-                // Update header
-                const nodeId = document.getElementById('nodeId');
-                if (nodeId) {
-                    nodeId.textContent = this.nodeInfo.node_id.substring(0, 16) + '...';
-                    nodeId.title = this.nodeInfo.node_id;
-                }
-
-                // Update status indicators
-                this.updateElement('p2pStatus', this.nodeInfo.p2p_status === 'enabled' ? 'P2P Active' : 'P2P Disabled');
-                this.updateElement('peerCount', this.nodeInfo.peer_count || 0);
-                this.updateElement('wsCount', this.nodeInfo.websocket_clients || 0);
-
-                // Update sidebar
-                this.updateElement('nodeStatus', this.nodeInfo.status);
-                this.updateElement('nodeVersion', this.nodeInfo.version);
-                this.updateElement('nodeUptime', this.formatUptime(this.nodeInfo.uptime));
-                this.updateElement('connectionCount', this.nodeInfo.peer_count || 0);
-
-                // Update settings
-                this.updateSettingsDisplay();
-            }
-
-            async publishPost() {
-                const contentTextarea = document.getElementById('postContent');
-                const permissionsSelect = document.getElementById('postPermissions');
-                const publishBtn = document.getElementById('publishBtn');
-                
-                if (!contentTextarea || !permissionsSelect || !publishBtn) return;
-
-                const content = contentTextarea.value.trim();
-                if (!content && this.selectedFiles.length === 0) {
-                    this.showNotification('Please enter content or select media files', 'error');
-                    return;
-                }
-
-                publishBtn.disabled = true;
-                publishBtn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px;"></div> Publishing...';
-
-                try {
-                    const formData = new FormData();
-                    formData.append('content', content);
-                    formData.append('permissions', permissionsSelect.value);
-
-                    // Add selected files
-                    this.selectedFiles.forEach(file => {
-                        formData.append('media', file);
-                    });
-
-                    const response = await fetch('/api/content', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Failed to publish post');
-                    }
-
-                    const result = await response.json();
-                    
-                    // Clear form
-                    contentTextarea.value = '';
-                    this.selectedFiles = [];
-                    document.getElementById('mediaPreview').innerHTML = '';
-                    
-                    // Reload feed
-                    await this.loadFeed();
-                    
-                    this.showNotification('Post published successfully!', 'success');
-                } catch (error) {
-                    console.error('Error publishing post:', error);
-                    this.showNotification(`Failed to publish post: ${error.message}`, 'error');
-                } finally {
-                    publishBtn.disabled = false;
-                    publishBtn.innerHTML = '🚀 Publish Post';
-                }
-            }
-
-            async loadFeed() {
-                try {
-                    const feedLoading = document.getElementById('feedLoading');
-                    const postsContainer = document.getElementById('postsContainer');
-                    
-                    if (feedLoading) feedLoading.style.display = 'block';
-
-                    const response = await fetch('/api/feed?limit=20&include_remote=true');
-                    if (!response.ok) throw new Error('Failed to fetch feed');
-                    
-                    const data = await response.json();
-                    this.posts = data.posts;
-                    
-                    this.renderPosts();
-                    
-                    if (feedLoading) feedLoading.style.display = 'none';
-                } catch (error) {
-                    console.error('Error loading feed:', error);
-                    this.showNotification('Failed to load feed', 'error');
-                }
-            }
-
-            renderPosts() {
-                const postsContainer = document.getElementById('postsContainer');
-                if (!postsContainer) return;
-
-                if (this.posts.length === 0) {
-                    postsContainer.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📝</div>
-                            <h3>No posts yet</h3>
-                            <p>Be the first to share something with your network!</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                const postsHTML = this.posts.map(post => this.renderPost(post)).join('');
-                postsContainer.innerHTML = postsHTML;
-            }
-
-            renderPost(post) {
-                const timeAgo = this.formatTimeAgo(post.timestamp);
-                const isOwn = post.author_id === this.nodeInfo?.node_id;
-                const isRemote = post.is_remote;
-                const authorName = isOwn ? 'You' : (post.author_name || 'Connected User');
-                
-                // Render media
-                let mediaHTML = '';
-                if (post.media_refs && post.media_refs.length > 0) {
-                    mediaHTML                <!-- Continue with other sections in next update... -->
-
-                <!-- Media Section -->
-                <div class="content-section" id="mediaSection" style="display: none;">
-                    <div class="feed-section">
-                        <div class="section-header">
-                            <h2 class="section-title">
-                                📁 Media Library
-                            </h2>
-                            <p class="section-subtitle">Your uploaded files and shared media</p>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="analytics-grid">
-                                <div class="analytics-card">
-                                    <div class="analytics-number" id="mediaTotal">0</div>
-                                    <div class="analytics-label">Total Files</div>
-                                </div>
-                                <div class="analytics-card">
-                                    <div class="analytics-number" id="mediaSize">0MB</div>
-                                    <div class="analytics-label">Storage Used</div>
-                                </div>
-                            </div>
-                            <div id="mediaGrid" class="post-media">
-                                <div class="loading">
-                                    <div class="spinner"></div>
-                                    Loading media...
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Search Section -->
-                <div class="content-section" id="searchSection" style="display: none;">
-                    <div class="feed-section">
-                        <div class="section-header">
-                            <h2 class="section-title">
-                                🔍 Search
-                            </h2>
-                            <p class="section-subtitle">Find content, messages, and connections</p>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="search-container">
-                                <span class="search-icon">🔍</span>
-                                <input type="text" class="search-input" id="globalSearchInput" 
-                                       placeholder="Search posts, comments, chat messages...">
-                                <div class="search-results" id="searchResults"></div>
-                            </div>
-                            
-                            <div class="form-group mt-3">
-                                <label class="form-label">Search Type</label>
-                                <select class="form-select" id="searchType">
-                                    <option value="all">🌐 All Content</option>
-                                    <option value="posts">📝 Posts</option>
-                                    <option value="comments">💬 Comments</option>
-                                    <option value="chat">💬 Chat Messages</option>
-                                </select>
-                            </div>
-
-                            <div id="searchResultsContainer" class="mt-<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -776,18 +66,12 @@
         }
 
         .logo h1 {
-            color: var(--primary-color);
-            font-size: 1.8rem;
+            font-size: 2rem;
             font-weight: 700;
-        }
-
-        .version-badge {
-            background: linear-gradient(45deg, var(--secondary-color), var(--info-color));
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .header-status {
@@ -796,85 +80,42 @@
             gap: 20px;
         }
 
-        .status-group {
+        .status-item {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 12px;
-            background: rgba(255,255,255,0.8);
-            border-radius: var(--border-radius);
-            border: 1px solid rgba(0,0,0,0.1);
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 5px;
+            padding: 8px 15px;
+            background: rgba(39, 174, 96, 0.1);
+            border-radius: 20px;
             font-size: 0.9rem;
+            font-weight: 500;
         }
 
-        .status-dot {
+        .status-icon {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background-color: var(--success-color);
+            background: var(--success-color);
             animation: pulse 2s infinite;
         }
 
-        .status-dot.p2p { background-color: var(--secondary-color); }
-        .status-dot.ws { background-color: var(--info-color); }
-
         @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
-        }
-
-        .peer-count, .ws-count {
-            background: var(--secondary-color);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 0.7rem;
-            min-width: 20px;
-            text-align: center;
-        }
-
-        .notification-bell {
-            position: relative;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 50%;
-            transition: var(--transition);
-        }
-
-        .notification-bell:hover {
-            background: rgba(0,0,0,0.1);
-        }
-
-        .notification-count {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: var(--accent-color);
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            font-size: 0.7rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
         }
 
         /* Enhanced Navigation */
         .nav {
-            background: var(--surface-color);
+            background: linear-gradient(135deg, var(--surface-color) 0%, #f8f9fa 100%);
             border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
         .nav-content {
             display: flex;
-            gap: 5px;
+            align-items: center;
+            gap: 20px;
             padding: 1rem 0;
             overflow-x: auto;
         }
@@ -889,6 +130,8 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            text-decoration: none;
+            color: var(--text-color);
         }
 
         .nav-item:hover {
@@ -993,97 +236,31 @@
             box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
         }
 
-        .media-upload-area {
-            border: 2px dashed var(--border-color);
-            border-radius: var(--border-radius);
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .media-upload-area:hover {
-            border-color: var(--secondary-color);
-            background: rgba(52, 152, 219, 0.05);
-        }
-
-        .media-upload-area.drag-over {
-            border-color: var(--success-color);
-            background: rgba(39, 174, 96, 0.1);
-        }
-
-        .media-preview {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
-
-        .media-preview-item {
-            position: relative;
-            width: 80px;
-            height: 80px;
-            border-radius: var(--border-radius);
-            overflow: hidden;
-            border: 2px solid var(--border-color);
-        }
-
-        .media-preview-item img, .media-preview-item video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .media-remove {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-            font-size: 0.8rem;
-        }
-
         .post-controls {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .media-controls {
+            display: flex;
             gap: 10px;
         }
 
-        .post-options {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-
-        /* Enhanced Posts */
+        /* Posts styling */
         .posts-container {
-            max-height: none;
+            padding: 0;
         }
 
         .post {
-            padding: 1.5rem;
             border-bottom: 1px solid var(--border-color);
+            padding: 1.5rem;
             transition: var(--transition);
         }
 
         .post:hover {
-            background: linear-gradient(135deg, #fafafa 0%, #f8f9fa 100%);
-        }
-
-        .post:last-child {
-            border-bottom: none;
-        }
-
-        .post.remote {
-            border-left: 4px solid var(--secondary-color);
-            background: linear-gradient(90deg, rgba(52, 152, 219, 0.05) 0%, transparent 100%);
+            background: rgba(52, 152, 219, 0.02);
         }
 
         .post-header {
@@ -1093,124 +270,49 @@
             margin-bottom: 1rem;
         }
 
-        .post-author-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
         .post-author {
             font-weight: 600;
             color: var(--primary-color);
         }
 
-        .post-author.remote {
-            color: var(--secondary-color);
-        }
-
-        .remote-badge {
-            background: var(--secondary-color);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 0.7rem;
-        }
-
         .post-time {
             color: var(--text-light);
-            font-size: 0.8rem;
+            font-size: 0.9rem;
         }
 
         .post-content {
-            font-size: 1rem;
-            line-height: 1.6;
             margin-bottom: 1rem;
+            line-height: 1.6;
         }
 
         .post-media {
-            margin: 1rem 0;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-        }
-
-        .post-media-item {
+            margin-bottom: 1rem;
             border-radius: var(--border-radius);
             overflow: hidden;
-            position: relative;
-            cursor: pointer;
-            transition: var(--transition);
         }
 
-        .post-media-item:hover {
-            transform: scale(1.02);
-            box-shadow: var(--shadow-hover);
-        }
-
-        .post-media-item img, .post-media-item video {
+        .post-media img, .post-media video, .post-media audio {
             width: 100%;
-            height: 200px;
-            object-fit: cover;
-        }
-
-        .media-overlay {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(transparent, rgba(0,0,0,0.7));
-            color: white;
-            padding: 10px;
-            font-size: 0.8rem;
-        }
-
-        .post-reactions {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .reaction-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            padding: 5px 10px;
-            background: var(--background-color);
-            border-radius: 15px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .reaction-item:hover {
-            transform: scale(1.05);
-            box-shadow: var(--shadow);
-        }
-
-        .reaction-item.user-reacted {
-            background: var(--secondary-color);
-            color: white;
+            height: auto;
+            display: block;
         }
 
         .post-actions {
             display: flex;
             gap: 20px;
             align-items: center;
-            padding-top: 10px;
-            border-top: 1px solid #f0f0f0;
         }
 
         .post-action {
-            display: flex;
-            align-items: center;
-            gap: 5px;
             color: var(--text-light);
             font-size: 0.9rem;
             cursor: pointer;
             transition: var(--transition);
             padding: 5px 10px;
             border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
         .post-action:hover {
@@ -1227,6 +329,7 @@
         .comments-section {
             border-top: 1px solid var(--border-color);
             padding-top: 1rem;
+            margin-top: 1rem;
         }
 
         .comment-form {
@@ -1295,6 +398,71 @@
             color: var(--secondary-color);
         }
 
+        /* Chat System */
+        .chat-section {
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-message.own {
+            align-items: flex-end;
+        }
+
+        .chat-bubble {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            word-wrap: break-word;
+        }
+
+        .chat-message.own .chat-bubble {
+            background: var(--secondary-color);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .chat-message:not(.own) .chat-bubble {
+            background: var(--border-color);
+            border-bottom-left-radius: 5px;
+        }
+
+        .chat-input-container {
+            padding: 1rem;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 0.9rem;
+            resize: none;
+            max-height: 100px;
+        }
+
+        .typing-indicator {
+            padding: 5px 15px;
+            font-size: 0.8rem;
+            color: var(--text-light);
+            font-style: italic;
+        }
+
         /* Enhanced Sidebar */
         .sidebar {
             display: flex;
@@ -1316,134 +484,34 @@
             background: linear-gradient(135deg, #f8f9fa 0%, var(--surface-color) 100%);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
 
         .sidebar-content {
             padding: 1.5rem;
         }
 
-        /* Enhanced Node Info */
-        .node-info-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            font-size: 0.9rem;
+        /* Analytics */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
         }
 
-        .node-info-label {
+        .analytics-item {
+            text-align: center;
+        }
+
+        .analytics-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--secondary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .analytics-label {
             color: var(--text-light);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .node-info-value {
-            font-weight: 600;
-            font-family: monospace;
-        }
-
-        .status-indicator-value {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .status-indicator-value.online {
-            color: var(--success-color);
-        }
-
-        .status-indicator-value.offline {
-            color: var(--text-light);
-        }
-
-        /* Chat Interface */
-        .chat-container {
-            height: 600px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chat-header {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            background: var(--background-color);
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .chat-message {
-            max-width: 80%;
-            padding: 10px 15px;
-            border-radius: 15px;
-            position: relative;
-        }
-
-        .chat-message.own {
-            align-self: flex-end;
-            background: var(--secondary-color);
-            color: white;
-            border-bottom-right-radius: 5px;
-        }
-
-        .chat-message.other {
-            align-self: flex-start;
-            background: var(--background-color);
-            border-bottom-left-radius: 5px;
-        }
-
-        .chat-message-header {
-            font-size: 0.8rem;
-            margin-bottom: 5px;
-            opacity: 0.8;
-        }
-
-        .chat-message-content {
             font-size: 0.9rem;
-            line-height: 1.4;
-        }
-
-        .chat-message-time {
-            font-size: 0.7rem;
-            margin-top: 5px;
-            opacity: 0.7;
-        }
-
-        .chat-input-area {
-            padding: 1rem;
-            border-top: 1px solid var(--border-color);
-            background: var(--background-color);
-        }
-
-        .chat-input-form {
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
-        }
-
-        .chat-input {
-            flex: 1;
-            padding: 10px 15px;
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            font-size: 0.9rem;
-            resize: none;
-            max-height: 100px;
-        }
-
-        .typing-indicator {
-            padding: 5px 15px;
-            font-size: 0.8rem;
-            color: var(--text-light);
-            font-style: italic;
         }
 
         /* Buttons Enhanced */
@@ -1548,68 +616,46 @@
             box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
         }
 
-        .form-textarea {
-            min-height: 100px;
-            resize: vertical;
-        }
-
-        /* Modals Enhanced */
+        /* Modal styles */
         .modal {
             display: none;
             position: fixed;
-            z-index: 2000;
-            left: 0;
             top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
         }
 
-        .modal.show {
+        .modal.active {
             display: flex;
             align-items: center;
             justify-content: center;
-            animation: modalFadeIn 0.3s ease;
-        }
-
-        @keyframes modalFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
         }
 
         .modal-content {
             background: var(--surface-color);
-            padding: 2rem;
             border-radius: 12px;
-            max-width: 600px;
-            width: 90%;
+            box-shadow: var(--shadow-hover);
+            margin: 2rem;
+            max-width: 500px;
+            width: 100%;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: var(--shadow-hover);
-            animation: modalSlideIn 0.3s ease;
-        }
-
-        @keyframes modalSlideIn {
-            from { transform: translateY(-50px) scale(0.9); }
-            to { transform: translateY(0) scale(1); }
         }
 
         .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
         }
 
         .modal-title {
-            font-size: 1.4rem;
+            font-size: 1.2rem;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
 
         .modal-close {
@@ -1618,255 +664,10 @@
             font-size: 1.5rem;
             cursor: pointer;
             color: var(--text-light);
-            padding: 5px;
-            border-radius: 50%;
-            transition: var(--transition);
         }
 
-        .modal-close:hover {
-            background: var(--background-color);
-            color: var(--text-color);
-        }
-
-        /* Notifications */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: var(--border-radius);
-            color: white;
-            font-weight: 500;
-            z-index: 3000;
-            animation: notificationSlideIn 0.5s ease;
-            max-width: 400px;
-            box-shadow: var(--shadow-hover);
-        }
-
-        .notification.success {
-            background: linear-gradient(45deg, var(--success-color), #2ecc71);
-        }
-
-        .notification.error {
-            background: linear-gradient(45deg, var(--accent-color), #e74c3c);
-        }
-
-        .notification.warning {
-            background: linear-gradient(45deg, var(--warning-color), #e67e22);
-        }
-
-        .notification.info {
-            background: linear-gradient(45deg, var(--info-color), var(--secondary-color));
-        }
-
-        @keyframes notificationSlideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        /* Loading States */
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: var(--text-light);
-        }
-
-        .spinner {
-            border: 3px solid var(--border-color);
-            border-top: 3px solid var(--secondary-color);
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 1rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Empty States */
-        .empty-state {
-            text-align: center;
-            padding: 3rem 1.5rem;
-            color: var(--text-light);
-        }
-
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-
-        .empty-state h3 {
-            margin-bottom: 1rem;
-            color: var(--text-color);
-        }
-
-        /* Media Viewer */
-        .media-viewer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.9);
-            z-index: 2500;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .media-viewer.show {
-            display: flex;
-        }
-
-        .media-viewer-content {
-            max-width: 90vw;
-            max-height: 90vh;
-            border-radius: var(--border-radius);
-            overflow: hidden;
-        }
-
-        .media-viewer-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 1.2rem;
-            cursor: pointer;
-        }
-
-        /* Reaction Picker */
-        .reaction-picker {
-            position: absolute;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 25px;
-            padding: 10px;
-            box-shadow: var(--shadow-hover);
-            display: none;
-            z-index: 1500;
-            animation: reactionPickerFadeIn 0.2s ease;
-        }
-
-        .reaction-picker.show {
-            display: flex;
-            gap: 5px;
-        }
-
-        @keyframes reactionPickerFadeIn {
-            from { opacity: 0; transform: scale(0.8); }
-            to { opacity: 1; transform: scale(1); }
-        }
-
-        .reaction-option {
-            font-size: 1.5rem;
-            padding: 8px;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .reaction-option:hover {
-            transform: scale(1.2);
-            background: var(--background-color);
-        }
-
-        /* Search Interface */
-        .search-container {
-            position: relative;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 20px 12px 45px;
-            border: 2px solid var(--border-color);
-            border-radius: 25px;
-            font-size: 1rem;
-            transition: var(--transition);
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-light);
-        }
-
-        .search-results {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-hover);
-            max-height: 400px;
-            overflow-y: auto;
-            z-index: 1000;
-            display: none;
-        }
-
-        .search-results.show {
-            display: block;
-        }
-
-        .search-result-item {
-            padding: 12px 15px;
-            border-bottom: 1px solid #f0f0f0;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .search-result-item:hover {
-            background: var(--background-color);
-        }
-
-        .search-result-item:last-child {
-            border-bottom: none;
-        }
-
-        /* Analytics Dashboard */
-        .analytics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .analytics-card {
-            background: var(--surface-color);
+        .modal-body {
             padding: 1.5rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
-            text-align: center;
-        }
-
-        .analytics-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--secondary-color);
-            margin-bottom: 0.5rem;
-        }
-
-        .analytics-label {
-            color: var(--text-light);
-            font-size: 0.9rem;
         }
 
         /* Responsive Design */
@@ -1977,22 +778,15 @@
 
         /* Utility classes */
         .text-center { text-align: center; }
-        .text-left { text-align: left; }
         .text-right { text-align: right; }
-        .mb-1 { margin-bottom: 0.5rem; }
-        .mb-2 { margin-bottom: 1rem; }
-        .mb-3 { margin-bottom: 1.5rem; }
         .mt-1 { margin-top: 0.5rem; }
         .mt-2 { margin-top: 1rem; }
         .mt-3 { margin-top: 1.5rem; }
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .mb-3 { margin-bottom: 1.5rem; }
         .hidden { display: none; }
         .visible { display: block; }
-        .flex { display: flex; }
-        .flex-col { flex-direction: column; }
-        .items-center { align-items: center; }
-        .justify-center { justify-content: center; }
-        .gap-2 { gap: 0.5rem; }
-        .gap-4 { gap: 1rem; }
     </style>
 </head>
 <body>
@@ -2001,35 +795,22 @@
         <div class="container">
             <div class="header-content">
                 <div class="logo">
-                    <h1>KABOOMedia</h1>
-                    <span class="version-badge">Phase 3</span>
+                    <h1>🚀 KABOOMedia</h1>
+                    <span class="feature-badge">Phase 3</span>
                 </div>
                 <div class="header-status">
-                    <div class="status-group">
-                        <div class="status-indicator">
-                            <div class="status-dot"></div>
-                            <span id="connectionStatus">Online</span>
-                        </div>
+                    <div class="status-item">
+                        <div class="status-icon"></div>
+                        <span>Node: <span id="nodeId">Loading...</span></span>
                     </div>
-                    <div class="status-group">
-                        <div class="status-indicator">
-                            <div class="status-dot p2p"></div>
-                            <span id="p2pStatus">P2P Ready</span>
-                            <span class="peer-count" id="peerCount">0</span>
-                        </div>
+                    <div class="status-item">
+                        <div class="status-icon"></div>
+                        <span id="p2pStatus">P2P: Enabled</span>
                     </div>
-                    <div class="status-group">
-                        <div class="status-indicator">
-                            <div class="status-dot ws"></div>
-                            <span>WebSocket</span>
-                            <span class="ws-count" id="wsCount">0</span>
-                        </div>
+                    <div class="status-item">
+                        <div class="status-icon"></div>
+                        <span id="connectionCount">Connections: 0</span>
                     </div>
-                    <div class="notification-bell" onclick="toggleNotifications()">
-                        🔔
-                        <span class="notification-count" id="notificationCount" style="display: none;">0</span>
-                    </div>
-                    <span id="nodeId">Loading...</span>
                 </div>
             </div>
         </div>
@@ -2039,38 +820,30 @@
     <nav class="nav">
         <div class="container">
             <div class="nav-content">
-                <div class="nav-item active" data-section="feed">
-                    <span class="nav-icon">🏠</span>
-                    <span>Feed</span>
-                </div>
-                <div class="nav-item" data-section="chat">
+                <a href="#" class="nav-item active" data-section="feed">
+                    <span class="nav-icon">📋</span>
+                    Feed
+                </a>
+                <a href="#" class="nav-item" data-section="chat">
                     <span class="nav-icon">💬</span>
-                    <span>Chat</span>
-                </div>
-                <div class="nav-item" data-section="media">
-                    <span class="nav-icon">📁</span>
-                    <span>Media</span>
-                </div>
-                <div class="nav-item" data-section="connections">
-                    <span class="nav-icon">🤝</span>
-                    <span>Connections</span>
-                </div>
-                <div class="nav-item" data-section="connect">
-                    <span class="nav-icon">➕</span>
-                    <span>Connect</span>
-                </div>
-                <div class="nav-item" data-section="search">
-                    <span class="nav-icon">🔍</span>
-                    <span>Search</span>
-                </div>
-                <div class="nav-item" data-section="analytics">
-                    <span class="nav-icon">📊</span>
-                    <span>Analytics</span>
-                </div>
-                <div class="nav-item" data-section="settings">
+                    Chat
+                </a>
+                <a href="#" class="nav-item" data-section="media">
+                    <span class="nav-icon">🎥</span>
+                    Media
+                </a>
+                <a href="#" class="nav-item" data-section="connections">
+                    <span class="nav-icon">🌐</span>
+                    Connections
+                </a>
+                <a href="#" class="nav-item" data-section="settings">
                     <span class="nav-icon">⚙️</span>
-                    <span>Settings</span>
-                </div>
+                    Settings
+                </a>
+                <button class="btn btn-primary btn-small" onclick="openModal('searchModal')">
+                    <span>🔍</span>
+                    Search
+                </button>
             </div>
         </div>
     </nav>
@@ -2080,118 +853,802 @@
         <div class="container">
             <div class="content-grid">
                 <!-- Feed Section -->
-                <div class="content-section" id="feedSection">
-                    <div class="feed-section">
-                        <div class="section-header">
-                            <h2 class="section-title">
-                                🏠 Content Feed
-                            </h2>
-                            <p class="section-subtitle">Share and discover content across your decentralized network</p>
-                            <div class="feature-badges">
-                                <span class="feature-badge">📁 Media Sharing</span>
-                                <span class="feature-badge">💬 Comments</span>
-                                <span class="feature-badge">👍 Reactions</span>
-                                <span class="feature-badge">🌐 P2P Sync</span>
-                            </div>
-                        </div>
-
-                        <!-- Enhanced Post Creator -->
-                        <div class="post-creator">
-                            <form class="post-form" id="postForm">
-                                <textarea 
-                                    class="post-textarea" 
-                                    id="postContent" 
-                                    placeholder="What's happening? Share your thoughts, upload media, or start a conversation..."
-                                    maxlength="5000"
-                                ></textarea>
-                                
-                                <!-- Media Upload Area -->
-                                <div class="media-upload-area" id="mediaUploadArea">
-                                    <div>
-                                        📁 Drop files here or click to upload
-                                        <br>
-                                        <small>Images, videos, audio, documents (Max 100MB each)</small>
-                                    </div>
-                                    <input type="file" id="mediaInput" multiple style="display: none;" 
-                                           accept="image/*,video/*,audio/*,.pdf,.txt,.md">
-                                </div>
-                                
-                                <div class="media-preview" id="mediaPreview"></div>
-                                
-                                <div class="post-controls">
-                                    <div class="post-options">
-                                        <select class="form-select" id="postPermissions">
-                                            <option value="friends_only">👥 Friends Only</option>
-                                            <option value="public">🌍 Public</option>
-                                            <option value="private">🔒 Private</option>
-                                        </select>
-                                        
-                                        <label class="btn btn-outline btn-small">
-                                            📷 Add Media
-                                            <input type="file" id="mediaInputBtn" multiple style="display: none;"
-                                                   accept="image/*,video/*,audio/*,.pdf,.txt,.md">
-                                        </label>
-                                    </div>
-                                    
-                                    <button type="submit" class="btn btn-primary" id="publishBtn">
-                                        🚀 Publish Post
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <!-- Posts Container -->
-                        <div class="posts-container" id="postsContainer">
-                            <div class="loading" id="feedLoading">
-                                <div class="spinner"></div>
-                                Loading posts...
-                            </div>
+                <div class="feed-section">
+                    <div class="section-header">
+                        <h2 class="section-title">
+                            <span>📰</span>
+                            Social Feed
+                        </h2>
+                        <p class="section-subtitle">Share and discover content from your network</p>
+                        <div class="feature-badges">
+                            <span class="feature-badge">Media Sharing</span>
+                            <span class="feature-badge">Real-time Updates</span>
+                            <span class="feature-badge">Comments</span>
+                            <span class="feature-badge">Reactions</span>
                         </div>
                     </div>
-                </div>
 
-                <!-- Chat Section -->
-                <div class="content-section" id="chatSection" style="display: none;">
-                    <div class="feed-section">
-                        <div class="section-header">
-                            <h2 class="section-title">
-                                💬 Real-time Chat
-                            </h2>
-                            <p class="section-subtitle">Instant messaging with your network</p>
-                        </div>
-                        <div class="chat-container">
-                            <div class="chat-header">
-                                <div>
-                                    <strong id="currentChatName">Select a conversation</strong>
-                                    <div id="chatParticipants"></div>
+                    <!-- Post Creator -->
+                    <div class="post-creator">
+                        <form class="post-form" id="postForm">
+                            <textarea 
+                                class="post-textarea" 
+                                placeholder="What's on your mind? Share your thoughts, media, or updates..." 
+                                id="postContent"
+                                maxlength="2000">
+                            </textarea>
+                            <div class="post-controls">
+                                <div class="media-controls">
+                                    <input type="file" id="mediaUpload" class="hidden" accept="image/*,video/*,audio/*" multiple>
+                                    <button type="button" class="btn btn-outline btn-small" onclick="document.getElementById('mediaUpload').click()">
+                                        <span>📷</span>
+                                        Media
+                                    </button>
+                                    <button type="button" class="btn btn-outline btn-small" onclick="togglePrivacy()">
+                                        <span id="privacyIcon">🌍</span>
+                                        <span id="privacyText">Public</span>
+                                    </button>
                                 </div>
-                                <button class="btn btn-primary btn-small" onclick="createNewChat()">
-                                    ➕ New Chat
+                                <button type="submit" class="btn btn-primary">
+                                    <span>📤</span>
+                                    Share Post
                                 </button>
                             </div>
-                            <div class="chat-messages" id="chatMessages">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">💬</div>
-                                    <h3>No conversation selected</h3>
-                                    <p>Choose a chat or start a new conversation</p>
+                        </form>
+                    </div>
+
+                    <!-- Posts Container -->
+                    <div class="posts-container" id="postsContainer">
+                        <!-- Sample Post -->
+                        <article class="post fade-in">
+                            <div class="post-header">
+                                <span class="post-author">🎭 Anonymous User</span>
+                                <span class="post-time">2 minutes ago</span>
+                            </div>
+                            <div class="post-content">
+                                Welcome to KABOOMedia Phase 3! 🚀 Now with advanced media sharing, real-time chat, and enhanced privacy controls. Your decentralized social experience just got better!
+                            </div>
+                            <div class="post-actions">
+                                <button class="post-action" onclick="toggleLike(this)">
+                                    <span>❤️</span>
+                                    <span>0</span>
+                                </button>
+                                <button class="post-action" onclick="toggleComments(this)">
+                                    <span>💬</span>
+                                    <span>0</span>
+                                </button>
+                                <button class="post-action" onclick="sharePost(this)">
+                                    <span>🔄</span>
+                                    Share
+                                </button>
+                                <button class="post-action" onclick="savePost(this)">
+                                    <span>🔖</span>
+                                    Save
+                                </button>
+                            </div>
+                            <div class="comments-section hidden">
+                                <div class="comment-form">
+                                    <input type="text" class="comment-input" placeholder="Write a comment...">
+                                    <button class="btn btn-small btn-primary">Post</button>
                                 </div>
                             </div>
-                            <div class="typing-indicator" id="typingIndicator" style="display: none;"></div>
-                            <div class="chat-input-area">
-                                <form class="chat-input-form" id="chatForm">
-                                    <textarea 
-                                        class="chat-input" 
-                                        id="chatInput" 
-                                        placeholder="Type a message..."
-                                        rows="1"
-                                    ></textarea>
-                                    <button type="submit" class="btn btn-primary">
-                                        🚀 Send
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
+                        </article>
                     </div>
                 </div>
 
-                <!-- Continue with other sections in next update... -->
+                <!-- Sidebar -->
+                <aside class="sidebar">
+                    <!-- Node Analytics -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span>📊</span>
+                            Node Analytics
+                        </div>
+                        <div class="sidebar-content">
+                            <div class="analytics-grid">
+                                <div class="analytics-item">
+                                    <div class="analytics-number" id="postCount">0</div>
+                                    <div class="analytics-label">Posts</div>
+                                </div>
+                                <div class="analytics-item">
+                                    <div class="analytics-number" id="commentCount">0</div>
+                                    <div class="analytics-label">Comments</div>
+                                </div>
+                                <div class="analytics-item">
+                                    <div class="analytics-number" id="mediaCount">0</div>
+                                    <div class="analytics-label">Media</div>
+                                </div>
+                                <div class="analytics-item">
+                                    <div class="analytics-number" id="connectionCountSidebar">0</div>
+                                    <div class="analytics-label">Connections</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Connections -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span>🌐</span>
+                            Active Connections
+                        </div>
+                        <div class="sidebar-content">
+                            <div id="activeConnections">
+                                <p class="text-center" style="color: var(--text-light);">No active connections</p>
+                            </div>
+                            <button class="btn btn-success btn-small mt-2" onclick="openModal('connectModal')" style="width: 100%;">
+                                <span>➕</span>
+                                Add Connection
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Chat -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">
+                            <span>💬</span>
+                            Quick Chat
+                        </div>
+                        <div class="chat-section">
+                            <div class="chat-messages" id="chatMessages">
+                                <div class="chat-message">
+                                    <div class="chat-bubble">
+                                        Welcome to KABOOMedia Phase 3! Chat is now active. 🎉
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-input-container">
+                                <textarea 
+                                    class="chat-input" 
+                                    placeholder="Type a message..."
+                                    id="chatInput"
+                                    rows="1">
+                                </textarea>
+                                <button class="btn btn-primary btn-small" onclick="sendMessage()">
+                                    <span>📤</span>
+                                </button>
+                            </div>
+                            <div class="typing-indicator hidden" id="typingIndicator">
+                                Someone is typing...
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </main>
+
+    <!-- Search Modal -->
+    <div class="modal" id="searchModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">🔍 Search</h3>
+                <button class="modal-close" onclick="closeModal('searchModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Search Terms</label>
+                    <input type="text" class="form-input" id="searchQuery" placeholder="Enter search terms...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Search Type</label>
+                    <select class="form-select" id="searchType">
+                        <option value="all">🌍 All Content</option>
+                        <option value="posts">📝 Posts</option>
+                        <option value="comments">💬 Comments</option>
+                        <option value="chat">💬 Chat Messages</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="performSearch()" style="width: 100%;">
+                    <span>🔍</span>
+                    Search
+                </button>
+                <div id="searchResults" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Modal -->
+    <div class="modal" id="connectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">🌐 New Connection</h3>
+                <button class="modal-close" onclick="closeModal('connectModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Connection Method</label>
+                    <select class="form-select" id="connectionMethod">
+                        <option value="qr">📱 QR Code</option>
+                        <option value="link">🔗 Direct Link</option>
+                        <option value="local">🏠 Local Network</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Connection String</label>
+                    <input type="text" class="form-input" id="connectionString" placeholder="Paste connection string or scan QR code">
+                </div>
+                <button class="btn btn-success" onclick="createConnection()" style="width: 100%;">
+                    <span>🔗</span>
+                    Connect
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // KABOOMedia Phase 3 Client Application
+        class KABOOMediaClient {
+            constructor() {
+                this.nodeInfo = null;
+                this.posts = [];
+                this.connections = [];
+                this.ws = null;
+                this.currentSection = 'feed';
+                this.privacyMode = 'public';
+                this.init();
+            }
+
+            async init() {
+                console.log('🚀 Initializing KABOOMedia Phase 3...');
+                
+                try {
+                    await this.loadNodeInfo();
+                    await this.loadPosts();
+                    await this.loadConnections();
+                    this.setupWebSocket();
+                    this.setupEventListeners();
+                    this.startRefreshInterval();
+                    
+                    console.log('✅ KABOOMedia Phase 3 initialized successfully');
+                } catch (error) {
+                    console.error('❌ Initialization failed:', error);
+                    this.showNotification('Failed to initialize application', 'error');
+                }
+            }
+
+            async loadNodeInfo() {
+                try {
+                    const response = await fetch('/api/status');
+                    if (!response.ok) throw new Error('Failed to fetch node status');
+                    
+                    this.nodeInfo = await response.json();
+                    this.updateNodeDisplay();
+                } catch (error) {
+                    console.error('Error loading node info:', error);
+                    this.showNotification('Failed to load node information', 'error');
+                }
+            }
+
+            updateNodeDisplay() {
+                if (!this.nodeInfo) return;
+
+                // Update header
+                const nodeId = document.getElementById('nodeId');
+                if (nodeId) {
+                    nodeId.textContent = this.nodeInfo.node_id.substring(0, 16) + '...';
+                    nodeId.title = this.nodeInfo.node_id;
+                }
+
+                // Update status indicators
+                this.updateElement('p2pStatus', this.nodeInfo.p2p_status === 'enabled' ? 'P2P: Enabled' : 'P2P: Disabled');
+                this.updateElement('connectionCount', `Connections: ${this.connections.length}`);
+                this.updateElement('connectionCountSidebar', this.connections.length);
+            }
+
+            async loadPosts() {
+                try {
+                    const response = await fetch('/api/posts');
+                    if (!response.ok) throw new Error('Failed to fetch posts');
+                    
+                    this.posts = await response.json();
+                    this.renderPosts();
+                    this.updateElement('postCount', this.posts.length);
+                } catch (error) {
+                    console.error('Error loading posts:', error);
+                    this.showNotification('Failed to load posts', 'error');
+                }
+            }
+
+            async loadConnections() {
+                try {
+                    const response = await fetch('/api/connections');
+                    if (!response.ok) throw new Error('Failed to fetch connections');
+                    
+                    this.connections = await response.json();
+                    this.renderConnections();
+                    this.updateElement('connectionCount', `Connections: ${this.connections.length}`);
+                    this.updateElement('connectionCountSidebar', this.connections.length);
+                } catch (error) {
+                    console.error('Error loading connections:', error);
+                    this.connections = [];
+                }
+            }
+
+            renderPosts() {
+                const container = document.getElementById('postsContainer');
+                if (!container) return;
+
+                // Keep the sample post and add new ones
+                const existingPosts = container.innerHTML;
+                
+                this.posts.forEach(post => {
+                    const postElement = this.createPostElement(post);
+                    container.appendChild(postElement);
+                });
+            }
+
+            createPostElement(post) {
+                const article = document.createElement('article');
+                article.className = 'post fade-in';
+                
+                article.innerHTML = `
+                    <div class="post-header">
+                        <span class="post-author">${this.escapeHtml(post.author || '🎭 Anonymous')}</span>
+                        <span class="post-time">${this.formatTime(post.created_at)}</span>
+                    </div>
+                    <div class="post-content">${this.escapeHtml(post.content)}</div>
+                    ${post.media_url ? `<div class="post-media">${this.renderMedia(post.media_url, post.media_type)}</div>` : ''}
+                    <div class="post-actions">
+                        <button class="post-action" onclick="client.toggleLike(this, '${post.id}')">
+                            <span>❤️</span>
+                            <span>${post.likes || 0}</span>
+                        </button>
+                        <button class="post-action" onclick="client.toggleComments(this, '${post.id}')">
+                            <span>💬</span>
+                            <span>${post.comment_count || 0}</span>
+                        </button>
+                        <button class="post-action" onclick="client.sharePost('${post.id}')">
+                            <span>🔄</span>
+                            Share
+                        </button>
+                        <button class="post-action" onclick="client.savePost('${post.id}')">
+                            <span>🔖</span>
+                            Save
+                        </button>
+                    </div>
+                    <div class="comments-section hidden" id="comments-${post.id}">
+                        <div class="comment-form">
+                            <input type="text" class="comment-input" placeholder="Write a comment...">
+                            <button class="btn btn-small btn-primary" onclick="client.addComment('${post.id}', this)">Post</button>
+                        </div>
+                    </div>
+                `;
+                
+                return article;
+            }
+
+            renderMedia(url, type) {
+                if (!url || !type) return '';
+                
+                switch (type) {
+                    case 'image':
+                        return `<img src="${url}" alt="Post image" loading="lazy">`;
+                    case 'video':
+                        return `<video controls preload="metadata"><source src="${url}" type="video/mp4">Your browser does not support video.</video>`;
+                    case 'audio':
+                        return `<audio controls preload="metadata"><source src="${url}" type="audio/mpeg">Your browser does not support audio.</audio>`;
+                    default:
+                        return `<a href="${url}" target="_blank" class="media-link">📎 ${url}</a>`;
+                }
+            }
+
+            renderConnections() {
+                const container = document.getElementById('activeConnections');
+                if (!container) return;
+
+                if (this.connections.length === 0) {
+                    container.innerHTML = '<p class="text-center" style="color: var(--text-light);">No active connections</p>';
+                    return;
+                }
+
+                container.innerHTML = this.connections.map(conn => `
+                    <div class="connection-item" style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 600;">${this.escapeHtml(conn.name || 'Unknown')}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-light);">${conn.status || 'Connected'}</div>
+                        </div>
+                        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--success-color);"></div>
+                    </div>
+                `).join('');
+            }
+
+            setupWebSocket() {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+                
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    console.log('🔌 WebSocket connected');
+                };
+                
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                this.ws.onclose = () => {
+                    console.log('🔌 WebSocket disconnected');
+                    // Attempt to reconnect after 3 seconds
+                    setTimeout(() => this.setupWebSocket(), 3000);
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+            }
+
+            handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'new_post':
+                        this.posts.unshift(data.post);
+                        this.renderPosts();
+                        this.updateElement('postCount', this.posts.length);
+                        break;
+                    case 'new_comment':
+                        this.handleNewComment(data);
+                        break;
+                    case 'chat_message':
+                        this.addChatMessage(data.message, false);
+                        break;
+                    case 'connection_update':
+                        this.loadConnections();
+                        break;
+                    case 'typing':
+                        this.showTypingIndicator(data.user);
+                        break;
+                    default:
+                        console.log('Unknown WebSocket message type:', data.type);
+                }
+            }
+
+            setupEventListeners() {
+                // Post form submission
+                const postForm = document.getElementById('postForm');
+                if (postForm) {
+                    postForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        this.submitPost();
+                    });
+                }
+
+                // Navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.switchSection(item.dataset.section);
+                    });
+                });
+
+                // Chat input
+                const chatInput = document.getElementById('chatInput');
+                if (chatInput) {
+                    chatInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            this.sendMessage();
+                        }
+                    });
+
+                    chatInput.addEventListener('input', () => {
+                        this.sendTypingIndicator();
+                    });
+                }
+
+                // Media upload
+                const mediaUpload = document.getElementById('mediaUpload');
+                if (mediaUpload) {
+                    mediaUpload.addEventListener('change', (e) => {
+                        this.handleMediaUpload(e.target.files);
+                    });
+                }
+
+                // Modal close on background click
+                document.querySelectorAll('.modal').forEach(modal => {
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) {
+                            this.closeModal(modal.id);
+                        }
+                    });
+                });
+            }
+
+            async submitPost() {
+                const content = document.getElementById('postContent').value.trim();
+                if (!content) {
+                    this.showNotification('Please enter some content', 'warning');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/posts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            content: content,
+                            privacy: this.privacyMode,
+                            media_files: [] // Handle media upload separately
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to create post');
+
+                    document.getElementById('postContent').value = '';
+                    this.showNotification('Post shared successfully!', 'success');
+                    await this.loadPosts();
+                } catch (error) {
+                    console.error('Error submitting post:', error);
+                    this.showNotification('Failed to share post', 'error');
+                }
+            }
+
+            sendMessage() {
+                const chatInput = document.getElementById('chatInput');
+                const message = chatInput.value.trim();
+                
+                if (!message) return;
+
+                this.addChatMessage(message, true);
+                chatInput.value = '';
+
+                // Send via WebSocket if connected
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'chat_message',
+                        message: message,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
+            }
+
+            addChatMessage(message, isOwn) {
+                const chatMessages = document.getElementById('chatMessages');
+                if (!chatMessages) return;
+
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-message ${isOwn ? 'own' : ''}`;
+                messageElement.innerHTML = `
+                    <div class="chat-bubble">${this.escapeHtml(message)}</div>
+                `;
+
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            toggleLike(button, postId) {
+                const countElement = button.querySelector('span:last-child');
+                const currentCount = parseInt(countElement.textContent);
+                const isLiked = button.classList.contains('active');
+
+                if (isLiked) {
+                    button.classList.remove('active');
+                    countElement.textContent = currentCount - 1;
+                } else {
+                    button.classList.add('active');
+                    countElement.textContent = currentCount + 1;
+                }
+
+                // Send like/unlike request
+                if (postId) {
+                    fetch(`/api/posts/${postId}/like`, {
+                        method: isLiked ? 'DELETE' : 'POST'
+                    }).catch(error => console.error('Error updating like:', error));
+                }
+            }
+
+            toggleComments(button, postId) {
+                const commentsSection = document.getElementById(`comments-${postId}`);
+                if (commentsSection) {
+                    commentsSection.classList.toggle('hidden');
+                }
+            }
+
+            async addComment(postId, button) {
+                const input = button.parentElement.querySelector('.comment-input');
+                const content = input.value.trim();
+                
+                if (!content) return;
+
+                try {
+                    const response = await fetch(`/api/posts/${postId}/comments`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ content })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to add comment');
+
+                    input.value = '';
+                    this.showNotification('Comment added successfully!', 'success');
+                } catch (error) {
+                    console.error('Error adding comment:', error);
+                    this.showNotification('Failed to add comment', 'error');
+                }
+            }
+
+            togglePrivacy() {
+                const icon = document.getElementById('privacyIcon');
+                const text = document.getElementById('privacyText');
+                
+                if (this.privacyMode === 'public') {
+                    this.privacyMode = 'friends';
+                    icon.textContent = '👥';
+                    text.textContent = 'Friends';
+                } else if (this.privacyMode === 'friends') {
+                    this.privacyMode = 'private';
+                    icon.textContent = '🔒';
+                    text.textContent = 'Private';
+                } else {
+                    this.privacyMode = 'public';
+                    icon.textContent = '🌍';
+                    text.textContent = 'Public';
+                }
+            }
+
+            openModal(modalId) {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    modal.classList.add('active');
+                }
+            }
+
+            closeModal(modalId) {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    modal.classList.remove('active');
+                }
+            }
+
+            showNotification(message, type = 'info') {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `notification notification-${type}`;
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: 500;
+                    z-index: 3000;
+                    transform: translateX(100%);
+                    transition: transform 0.3s ease;
+                `;
+
+                switch (type) {
+                    case 'success':
+                        notification.style.background = 'var(--success-color)';
+                        break;
+                    case 'error':
+                        notification.style.background = 'var(--accent-color)';
+                        break;
+                    case 'warning':
+                        notification.style.background = 'var(--warning-color)';
+                        break;
+                    default:
+                        notification.style.background = 'var(--info-color)';
+                }
+
+                notification.textContent = message;
+                document.body.appendChild(notification);
+
+                // Animate in
+                setTimeout(() => {
+                    notification.style.transform = 'translateX(0)';
+                }, 100);
+
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    notification.style.transform = 'translateX(100%)';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }, 3000);
+            }
+
+            switchSection(section) {
+                // Update navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector(`[data-section="${section}"]`).classList.add('active');
+
+                this.currentSection = section;
+                // Additional section switching logic can be added here
+            }
+
+            startRefreshInterval() {
+                // Refresh data every 30 seconds
+                this.refreshInterval = setInterval(() => {
+                    this.loadPosts();
+                    this.loadConnections();
+                }, 30000);
+            }
+
+            formatTime(timestamp) {
+                const date = new Date(timestamp);
+                const now = new Date();
+                const diff = now - date;
+
+                if (diff < 60000) return 'Just now';
+                if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
+                if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
+                return `${Math.floor(diff / 86400000)} days ago`;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            updateElement(id, value) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = value;
+                }
+            }
+        }
+
+        // Global functions for onclick handlers
+        function togglePrivacy() {
+            client.togglePrivacy();
+        }
+
+        function openModal(modalId) {
+            client.openModal(modalId);
+        }
+
+        function closeModal(modalId) {
+            client.closeModal(modalId);
+        }
+
+        function performSearch() {
+            const query = document.getElementById('searchQuery').value;
+            const type = document.getElementById('searchType').value;
+            // Implement search functionality
+            client.showNotification('Search functionality coming soon!', 'info');
+        }
+
+        function createConnection() {
+            // Implement connection creation
+            client.showNotification('Connection functionality coming soon!', 'info');
+            client.closeModal('connectModal');
+        }
+
+        function sendMessage() {
+            client.sendMessage();
+        }
+
+        // Initialize the application
+        let client;
+        document.addEventListener('DOMContentLoaded', () => {
+            client = new KABOOMediaClient();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (client) {
+                if (client.refreshInterval) {
+                    clearInterval(client.refreshInterval);
+                }
+                if (client.ws) {
+                    client.ws.close();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
