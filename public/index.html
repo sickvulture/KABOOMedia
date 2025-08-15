@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KABOOMedia - Decentralized Social Platform</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --background-color: #ecf0f1;
+            --surface-color: #ffffff;
+            --text-color: #2c3e50;
+            --text-light: #7f8c8d;
+            --border-color: #bdc3c7;
+            --shadow: 0 2px 10px rgba(0,0,0,0.1);
+            --border-radius: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo h1 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .node-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-content {
+            display: flex;
+            gap: 30px;
+            padding: 1rem 0;
+        }
+
+        .nav-item {
+            padding: 8px 16px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background-color: var(--background-color);
+        }
+
+        .nav-item.active {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        /* Main Content */
+        .main {
+            padding: 2rem 0;
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 2rem;
+        }
+
+        /* Feed Section */
+        .feed-section {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .section-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-subtitle {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        /* Post Creator */
+        .post-creator {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .post-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .post-textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+
+        .post-textarea:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+        }
+
+        .post-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .permission-select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            background: var(--surface-color);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Posts */
+        .posts-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .post {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.3s ease;
+        }
+
+        .post:hover {
+            background-color: #fafafa;
+        }
+
+        .post:last-child {
+            border-bottom: none;
+        }
+
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .post-author {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .post-time {
+            color: var(--text-light);
+            font-size: 0.8rem;
+        }
+
+        .post-content {
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .post-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .post-action {
+            color: var(--text-light);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .post-action:hover {
+            color: var(--secondary-color);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .sidebar-section {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        .sidebar-content {
+            padding: 1.5rem;
+        }
+
+        /* Node Info */
+        .node-info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .node-info-label {
+            color: var(--text-light);
+        }
+
+        .node-info-value {
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        /* Connections */
+        .connection-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .connection-item:last-child {
+            border-bottom: none;
+        }
+
+        .connection-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success-color);
+        }
+
+        .connection-name {
+            font-weight: 500;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-light);
+        }
+
+        .loading::after {
+            content: '...';
+            animation: loading 1.5s infinite;
+        }
+
+        @keyframes loading {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-light);
+        }
+
+        .empty-state h3 {
+            margin-bottom: 1rem;
+            color: var(--text-color);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .nav-content {
+                gap: 15px;
+                overflow-x: auto;
+                padding-bottom: 10px;
+            }
+
+            .post-controls {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+        }
+
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: var(--border-radius);
+            color: white;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .notification.success {
+            background-color: var(--success-color);
+        }
+
+        .notification.error {
+            background-color: var(--accent-color);
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>KABOOMedia</h1>
+                    <div class="status-indicator">
+                        <div class="status-dot"></div>
+                        <span id="connectionStatus">Online</span>
+                    </div>
+                </div>
+                <div class="node-status">
+                    <span id="nodeId">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="container">
+            <div class="nav-content">
+                <div class="nav-item active" data-section="feed">Feed</div>
+                <div class="nav-item" data-section="connections">Connections</div>
+                <div class="nav-item" data-section="settings">Settings</div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <div class="content-grid">
+                <!-- Feed Section -->
+                <div class="feed-section">
+                    <div class="section-header">
+                        <h2 class="section-title">Content Feed</h2>
+                        <p class="section-subtitle">Share your thoughts with your network</p>
+                    </div>
+
+                    <!-- Post Creator -->
+                    <div class="post-creator">
+                        <form class="post-form" id="postForm">
+                            <textarea 
+                                class="post-textarea" 
+                                id="postContent" 
+                                placeholder="What's on your mind? Share your thoughts with your network..."
+                                maxlength="2000"
+                            ></textarea>
+                            <div class="post-controls">
+                                <select class="permission-select" id="postPermissions">
+                                    <option value="friends_only">Friends Only</option>
+                                    <option value="public">Public</option>
+                                    <option value="private">Private</option>
+                                </select>
+                                <button type="submit" class="btn btn-primary" id="publishBtn">
+                                    Publish Post
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Posts Container -->
+                    <div class="posts-container" id="postsContainer">
+                        <div class="loading" id="feedLoading">Loading posts</div>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <!-- Node Information -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">Node Information</div>
+                        <div class="sidebar-content">
+                            <div class="node-info-item">
+                                <span class="node-info-label">Status:</span>
+                                <span class="node-info-value" id="nodeStatus">Online</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">Version:</span>
+                                <span class="node-info-value" id="nodeVersion">1.0.0</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">Uptime:</span>
+                                <span class="node-info-value" id="nodeUptime">0s</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">Connections:</span>
+                                <span class="node-info-value" id="connectionCount">0</span>
+                            </div>
+                            <div class="node-info-item">
+                                <span class="node-info-label">Encryption:</span>
+                                <span class="node-info-value" style="color: var(--success-color);">✓ Enabled</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Connections -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">Active Connections</div>
+                        <div class="sidebar-content" id="connectionsContainer">
+                            <div class="empty-state">
+                                <p>No active connections</p>
+                                <small>Share your node address to connect with others</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="sidebar-section">
+                        <div class="sidebar-header">Quick Actions</div>
+                        <div class="sidebar-content">
+                            <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="generateQRCode()">
+                                Generate QR Code
+                            </button>
+                            <button class="btn" style="width: 100%; background: var(--warning-color); color: white;" onclick="exportData()">
+                                Export Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        class KABOOMediaClient {
+            constructor() {
+                this.nodeInfo = null;
+                this.posts = [];
+                this.connections = [];
+                this.currentSection = 'feed';
+                this.refreshInterval = null;
+                
+                this.init();
+            }
+
+            async init() {
+                console.log('🚀 Initializing KABOOMedia Client...');
+                
+                this.setupEventListeners();
+                await this.loadNodeInfo();
+                await this.loadFeed();
+                await this.loadConnections();
+                
+                // Start periodic updates
+                this.startPeriodicUpdates();
+                
+                console.log('✅ KABOOMedia Client initialized');
+            }
+
+            setupEventListeners() {
+                // Navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        const section = e.target.dataset.section;
+                        this.switchSection(section);
+                    });
+                });
+
+                // Post form
+                const postForm = document.getElementById('postForm');
+                if (postForm) {
+                    postForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        this.publishPost();
+                    });
+                }
+
+                // Auto-resize textarea
+                const textarea = document.getElementById('postContent');
+                if (textarea) {
+                    textarea.addEventListener('input', this.autoResizeTextarea);
+                }
+            }
+
+            async loadNodeInfo() {
+                try {
+                    const response = await fetch('/api/status');
+                    if (!response.ok) throw new Error('Failed to fetch node status');
+                    
+                    this.nodeInfo = await response.json();
+                    this.updateNodeDisplay();
+                } catch (error) {
+                    console.error('Error loading node info:', error);
+                    this.showNotification('Failed to load node information', 'error');
+                }
+            }
+
+            updateNodeDisplay() {
+                if (!this.nodeInfo) return;
+
+                // Update header
+                const nodeId = document.getElementById('nodeId');
+                if (nodeId) {
+                    nodeId.textContent = this.nodeInfo.node_id.substring(0, 16) + '...';
+                    nodeId.title = this.nodeInfo.node_id;
+                }
+
+                // Update sidebar
+                const elements = {
+                    nodeStatus: this.nodeInfo.status,
+                    nodeVersion: this.nodeInfo.version,
+                    nodeUptime: this.formatUptime(this.nodeInfo.uptime),
+                    connectionCount: this.nodeInfo.connections
+                };
+
+                Object.entries(elements).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                });
+            }
+
+            async loadFeed() {
+                try {
+                    const feedLoading = document.getElementById('feedLoading');
+                    const postsContainer = document.getElementById('postsContainer');
+                    
+                    if (feedLoading) feedLoading.style.display = 'block';
+
+                    const response = await fetch('/api/feed?limit=20');
+                    if (!response.ok) throw new Error('Failed to fetch feed');
+                    
+                    const data = await response.json();
+                    this.posts = data.posts;
+                    
+                    this.renderPosts();
+                    
+                    if (feedLoading) feedLoading.style.display = 'none';
+                } catch (error) {
+                    console.error('Error loading feed:', error);
+                    this.showNotification('Failed to load feed', 'error');
+                    
+                    const feedLoading = document.getElementById('feedLoading');
+                    if (feedLoading) {
+                        feedLoading.textContent = 'Failed to load posts';
+                        feedLoading.classList.remove('loading');
+                    }
+                }
+            }
+
+            renderPosts() {
+                const postsContainer = document.getElementById('postsContainer');
+                if (!postsContainer) return;
+
+                if (this.posts.length === 0) {
+                    postsContainer.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No posts yet</h3>
+                            <p>Be the first to share something with your network!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const postsHTML = this.posts.map(post => this.renderPost(post)).join('');
+                postsContainer.innerHTML = postsHTML;
+            }
+
+            renderPost(post) {
+                const timeAgo = this.formatTimeAgo(post.timestamp);
+                const authorName = post.author_id === this.nodeInfo?.node_id ? 'You' : 'Connected User';
+                
+                return `
+                    <div class="post fade-in">
+                        <div class="post-header">
+                            <span class="post-author">${authorName}</span>
+                            <span class="post-time">${timeAgo}</span>
+                        </div>
+                        <div class="post-content">${this.escapeHtml(post.content)}</div>
+                        <div class="post-actions">
+                            <span class="post-action" onclick="client.likePost('${post.id}')">👍 Like</span>
+                            <span class="post-action" onclick="client.commentOnPost('${post.id}')">💬 Comment</span>
+                            <span class="post-action" onclick="client.sharePost('${post.id}')">🔄 Share</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            async publishPost() {
+                const contentTextarea = document.getElementById('postContent');
+                const permissionsSelect = document.getElementById('postPermissions');
+                const publishBtn = document.getElementById('publishBtn');
+                
+                if (!contentTextarea || !permissionsSelect || !publishBtn) return;
+
+                const content = contentTextarea.value.trim();
+                if (!content) {
+                    this.showNotification('Please enter some content', 'error');
+                    return;
+                }
+
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+
+                try {
+                    const response = await fetch('/api/content', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            content: content,
+                            permissions: permissionsSelect.value
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to publish post');
+
+                    const result = await response.json();
+                    
+                    // Clear form
+                    contentTextarea.value = '';
+                    
+                    // Reload feed
+                    await this.loadFeed();
+                    
+                    this.showNotification('Post published successfully!', 'success');
+                } catch (error) {
+                    console.error('Error publishing post:', error);
+                    this.showNotification('Failed to publish post', 'error');
+                } finally {
+                    publishBtn.disabled = false;
+                    publishBtn.textContent = 'Publish Post';
+                }
+            }
+
+            async loadConnections() {
+                try {
+                    const response = await fetch('/api/connections');
+                    if (!response.ok) throw new Error('Failed to fetch connections');
+                    
+                    const data = await response.json();
+                    this.connections = data.connections;
+                    
+                    this.renderConnections();
+                } catch (error) {
+                    console.error('Error loading connections:', error);
+                }
+            }
+
+            renderConnections() {
+                const connectionsContainer = document.getElementById('connectionsContainer');
+                if (!connectionsContainer) return;
+
+                if (this.connections.length === 0) {
+                    connectionsContainer.innerHTML = `
+                        <div class="empty-state">
+                            <p>No active connections</p>
+                            <small>Share your node address to connect with others</small>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const connectionsHTML = this.connections.map(connection => `
+                    <div class="connection-item">
+                        <div class="connection-status"></div>
+                        <div class="connection-name">${this.escapeHtml(connection.display_name)}</div>
+                    </div>
+                `).join('');
+
+                connectionsContainer.innerHTML = connectionsHTML;
+            }
+
+            switchSection(section) {
+                // Update navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector(`[data-section="${section}"]`).classList.add('active');
+
+                this.currentSection = section;
+
+                // Handle section-specific logic
+                switch (section) {
+                    case 'feed':
+                        this.loadFeed();
+                        break;
+                    case 'connections':
+                        this.loadConnections();
+                        break;
+                    case 'settings':
+                        // TODO: Implement settings view
+                        break;
+                }
+            }
+
+            startPeriodicUpdates() {
+                // Update node info every 30 seconds
+                this.refreshInterval = setInterval(() => {
+                    this.loadNodeInfo();
+                    if (this.currentSection === 'feed') {
+                        this.loadFeed();
+                    }
+                }, 30000);
+            }
+
+            // Utility methods
+            formatUptime(seconds) {
+                if (seconds < 60) return `${Math.floor(seconds)}s`;
+                if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+                if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+                return `${Math.floor(seconds / 86400)}d`;
+            }
+
+            formatTimeAgo(timestamp) {
+                const now = Date.now();
+                const diff = now - timestamp;
+                
+                if (diff < 60000) return 'Just now';
+                if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+                return `${Math.floor(diff / 86400000)}d ago`;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            autoResizeTextarea(event) {
+                const textarea = event.target;
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
+            }
+
+            showNotification(message, type = 'success') {
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                notification.textContent = message;
+                
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    notification.remove();
+                }, 3000);
+            }
+
+            // Placeholder methods for future implementation
+            likePost(postId) {
+                console.log('Like post:', postId);
+                this.showNotification('Like functionality coming soon!');
+            }
+
+            commentOnPost(postId) {
+                console.log('Comment on post:', postId);
+                this.showNotification('Comment functionality coming soon!');
+            }
+
+            sharePost(postId) {
+                console.log('Share post:', postId);
+                this.showNotification('Share functionality coming soon!');
+            }
+        }
+
+        // Global functions for button actions
+        function generateQRCode() {
+            console.log('Generate QR Code');
+            client.showNotification('QR Code generation coming in Phase 2!');
+        }
+
+        function exportData() {
+            console.log('Export Data');
+            client.showNotification('Data export functionality coming soon!');
+        }
+
+        // Initialize the client when the page loads
+        let client;
+        document.addEventListener('DOMContentLoaded', () => {
+            client = new KABOOMediaClient();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (client && client.refreshInterval) {
+                clearInterval(client.refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>
