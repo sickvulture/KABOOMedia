@@ -25,6 +25,617 @@ class KABOOMediaServer {
         this.tempCodes = new Map(); // Store temporary connection codes
     }
 
+    // Load or create node configuration
+    async loadOrCreateConfig() {
+        try {
+            const configData = await fs.readFile(this.configPath, 'utf8');
+            this.nodeConfig = JSON.parse(configData);
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                // Create new configuration
+                this.nodeConfig = {
+                    node_id: `kaboo_${crypto.randomBytes(32).toString('hex')}`,
+                    display_name: "KABOOMedia Node",
+                    port: this.port,
+                    version: "1.0.0",
+                    encryption: {
+                        algorithm: "AES-256-GCM",
+                        key_derivation: "PBKDF2",
+                        iterations: 100000
+                    },
+                    discovery: {
+                        mdns_enabled: true,
+                        upnp_enabled: false,
+                        manual_address: null
+                    },
+                    permissions: {
+                        default_permission: "visitor",
+                        permissions: {
+                            owner: ["view_private", "view_public", "comment", "react", "admin"],
+                            friend: ["view_private", "view_public", "comment", "react"],
+                            visitor: ["view_public"],
+                            blocked: []
+                        },
+                        content_visibility: {
+                            posts: "friends_only",
+                            media: "public",
+                            comments: "friends_only"
+                        }
+                    }
+                };
+
+                await fs.writeFile(this.configPath, JSON.stringify(this.nodeConfig, null, 2));
+                console.log('📝 Created new node configuration');
+            } else {
+                throw err;
+            }
+        }
+    }
+
+    // Generate or load cryptographic keys
+    async generateOrLoadKeys() {
+        const privateKeyPath = path.join(this.keysDir, 'private.pem');
+        const publicKeyPath = path.join(this.keysDir, 'public.pem');
+        const masterKeyPath = path.join(this.keysDir, 'master.key');
+
+        try {
+            // Load existing keys
+            const privateKey = await fs.readFile(privateKeyPath, 'utf8');
+            const publicKey = await fs.readFile(publicKeyPath, 'utf8');
+            const masterKeyData = await fs.readFile(masterKeyPath, 'utf8');
+            
+            this.privateKey = privateKey;
+            this.publicKey = publicKey;
+            this.masterKey = Buffer.from(masterKeyData, 'hex');
+            
+            // Update config with public key
+            this.nodeConfig.publicKey = publicKey;
+            
+            console.log('🔑 Loaded existing cryptographic keys');
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                // Generate new RSA key pair
+                const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+                    modulusLength: 2048,
+                    publicKeyEncoding: {
+                        type: 'spki',
+                        format: 'pem'
+                    },
+                    privateKeyEncoding: {
+                        type: 'pkcs8',
+                        format: 'pem'
+                    }
+                });
+
+                // Generate master key for AES encryption
+                this.masterKey = crypto.randomBytes(32);
+                
+                // Save keys
+                await fs.writeFile(privateKeyPath, privateKey, { mode: 0o600 });
+                await fs.writeFile(publicKeyPath, publicKey);
+                await fs.writeFile(masterKeyPath, this.masterKey.toString('hex'), { mode: 0o600 });
+                
+                this.privateKey = privateKey;
+                this.publicKey = publicKey;
+                this.nodeConfig.publicKey = publicKey;
+                
+                console.log('🔐 Generated new cryptographic keys');
+            } else {
+                throw err;
+            }
+        }
+    }
+
+    // Initialize P2P networking
+    async initializeNetworking() {
+        try {
+            this.networkManager = new P2PNetworkManager(this.nodeConfig, this.db, this.masterKey);
+            this.qrGenerator = new QRCodeGenerator(this.nodeConfig);
+            
+            // Set up event handlers
+            this.networkManager.on('peerConnected', (peer) => {
+                console.log(`🤝 Peer connected: ${peer.displayName || peer.nodeId}`);
+                this.handlePeerConnected(peer);
+            });
+
+            this.networkManager.on('peerDisconnected', (peer) => {
+                console.log(`👋 Peer disconnected: ${peer.displayName || peer.nodeId}`);
+                this.handlePeerDisconnected(peer);
+            });
+
+            this.networkManager.on('contentReceived', (data) => {
+                console.log(`📨 Content received from peer: ${data.fromPeer}`);
+                this.handleRemoteContent(data);
+            });
+
+            this.networkManager.on('peerDiscovered', (peerInfo) => {
+                console.log(`🔍 Discovered peer: ${peerInfo.displayName}`);
+                // Auto-connect logic could go here
+            });
+
+            await this.networkManager.initialize();
+            
+        } catch (error) {
+            console.error('Failed to initialize networking:', error);
+            // Continue without networking for graceful degradation
+        }
+    }
+
+    // Setup Express middleware
+    setupMiddleware() {
+        // Rate limiting
+        const limiter = rateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100, // limit each IP to 100 requests per windowMs
+            message: 'Too many requests from this IP'
+        });
+        this.app.use('/api/', limiter);
+
+        // Security headers
+        this.app.use(helmet({
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: ["'self'"],
+                    styleSrc: ["'self'", "'unsafe-inline'"],
+                    scriptSrc: ["'self'"],
+                    imgSrc: ["'self'", "data:", "blob:"],
+                    connectSrc: ["'self'", "ws:", "wss:"],
+                },
+            },
+        }));
+
+        // Body parsing
+        this.app.use(express.json({ limit: '10mb' }));
+        this.app.use(express.urlencoded({ extended: true }));
+
+        // Static files
+        this.app.use(express.static(path.join(__dirname, 'public')));
+
+        // Request logging
+        this.app.use((req, res, next) => {
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] ${req.method} ${req.path}`);
+            next();
+        });
+    }
+
+    // Setup API routes
+    setupRoutes() {
+        // Node status endpoint
+        this.app.get('/api/status', (req, res) => {
+            res.json({
+                status: 'online',
+                node_id: this.nodeConfig.node_id,
+                display_name: this.nodeConfig.display_name,
+                version: this.nodeConfig.version,
+                connections: this.getConnectionCount(),
+                uptime: process.uptime(),
+                encryption_status: 'enabled',
+                p2p_status: this.networkManager ? 'enabled' : 'disabled',
+                peer_count: this.networkManager ? this.networkManager.getPeerCount() : 0
+            });
+        });
+
+        // Get node configuration (public parts only)
+        this.app.get('/api/config', (req, res) => {
+            res.json({
+                node_id: this.nodeConfig.node_id,
+                display_name: this.nodeConfig.display_name,
+                public_key: this.publicKey,
+                permissions: this.nodeConfig.permissions,
+                discovery_enabled: this.nodeConfig.discovery?.mdns_enabled || false
+            });
+        });
+
+        // Create new content
+        this.app.post('/api/content', async (req, res) => {
+            try {
+                const { content, permissions = 'friends_only', media_refs = null } = req.body;
+                
+                if (!content) {
+                    return res.status(400).json({ error: 'Content is required' });
+                }
+
+                const postId = crypto.randomUUID();
+                const postData = {
+                    id: postId,
+                    text: content,
+                    author_id: this.nodeConfig.node_id,
+                    author_name: this.nodeConfig.display_name,
+                    timestamp: Date.now(),
+                    permissions: permissions,
+                    media_refs: media_refs
+                };
+
+                const encryptedContent = this.encryptData(JSON.stringify(postData));
+                const timestamp = Date.now();
+
+                const stmt = this.db.prepare(`
+                    INSERT INTO posts (id, content_encrypted, timestamp, permissions, media_refs, author_id, author_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `);
+
+                stmt.run(
+                    postId, 
+                    encryptedContent, 
+                    timestamp, 
+                    permissions, 
+                    media_refs, 
+                    this.nodeConfig.node_id,
+                    this.nodeConfig.display_name
+                );
+
+                // Broadcast to connected peers
+                if (this.networkManager && permissions !== 'private') {
+                    await this.networkManager.broadcastContent(postData);
+                }
+
+                res.json({
+                    success: true,
+                    post_id: postId,
+                    timestamp: timestamp
+                });
+            } catch (error) {
+                console.error('Error creating content:', error);
+                res.status(500).json({ error: 'Failed to create content' });
+            }
+        });
+
+        // Get content feed
+        this.app.get('/api/feed', async (req, res) => {
+            try {
+                const limit = parseInt(req.query.limit) || 20;
+                const offset = parseInt(req.query.offset) || 0;
+                const includeRemote = req.query.include_remote !== 'false';
+
+                let query = `
+                    SELECT id, content_encrypted, timestamp, permissions, media_refs, author_id, author_name, is_remote
+                    FROM posts
+                `;
+                
+                if (!includeRemote) {
+                    query += ` WHERE is_remote = 0`;
+                }
+                
+                query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+
+                const stmt = this.db.prepare(query);
+                const posts = stmt.all(limit, offset);
+                
+                const decryptedPosts = posts.map(post => {
+                    try {
+                        const decryptedContent = this.decryptData(post.content_encrypted);
+                        const contentData = JSON.parse(decryptedContent);
+                        
+                        return {
+                            id: post.id,
+                            content: contentData.text || contentData.content,
+                            timestamp: post.timestamp,
+                            permissions: post.permissions,
+                            media_refs: post.media_refs,
+                            author_id: post.author_id,
+                            author_name: post.author_name || contentData.author_name || 'Unknown',
+                            is_remote: Boolean(post.is_remote)
+                        };
+                    } catch (err) {
+                        console.error('Failed to decrypt post:', post.id, err);
+                        return null;
+                    }
+                }).filter(post => post !== null);
+
+                res.json({
+                    posts: decryptedPosts,
+                    total: this.getPostCount(),
+                    limit: limit,
+                    offset: offset
+                });
+            } catch (error) {
+                console.error('Error fetching feed:', error);
+                res.status(500).json({ error: 'Failed to fetch feed' });
+            }
+        });
+
+        // Get connections
+        this.app.get('/api/connections', (req, res) => {
+            try {
+                const stmt = this.db.prepare(`
+                    SELECT node_id, display_name, permission_level, last_seen, status, connection_type
+                    FROM connections
+                    ORDER BY last_seen DESC
+                `);
+
+                const connections = stmt.all();
+                
+                // Add live connection status from network manager
+                const liveConnections = this.networkManager ? this.networkManager.getConnectedPeers() : [];
+                const livePeerIds = new Set(liveConnections.map(peer => peer.nodeId));
+                
+                const enrichedConnections = connections.map(conn => ({
+                    ...conn,
+                    is_online: livePeerIds.has(conn.node_id),
+                    last_seen_formatted: conn.last_seen ? new Date(conn.last_seen).toISOString() : null
+                }));
+
+                res.json({ 
+                    connections: enrichedConnections,
+                    live_count: liveConnections.length,
+                    total_count: connections.length
+                });
+            } catch (error) {
+                console.error('Error fetching connections:', error);
+                res.status(500).json({ error: 'Failed to fetch connections' });
+            }
+        });
+
+        // Connect to peer by QR code/connection string
+        this.app.post('/api/connect', async (req, res) => {
+            try {
+                const { connectionData, qrCode } = req.body;
+                
+                if (!this.networkManager) {
+                    return res.status(503).json({ error: 'P2P networking not available' });
+                }
+
+                let peerInfo;
+                
+                if (qrCode) {
+                    // Decode QR code
+                    peerInfo = this.qrGenerator.decodeFromQR(qrCode);
+                    this.qrGenerator.validateConnectionData(peerInfo);
+                } else if (connectionData) {
+                    peerInfo = connectionData;
+                } else {
+                    return res.status(400).json({ error: 'Connection data or QR code required' });
+                }
+
+                // Attempt connection
+                const peer = await this.networkManager.connectToPeer(peerInfo);
+                
+                res.json({
+                    success: true,
+                    peer_id: peer.nodeId,
+                    display_name: peerInfo.displayName,
+                    connection_status: 'connected'
+                });
+
+            } catch (error) {
+                console.error('Error connecting to peer:', error);
+                res.status(400).json({ error: error.message });
+            }
+        });
+
+        // Generate QR code for sharing
+        this.app.get('/api/qr/generate', (req, res) => {
+            try {
+                const type = req.query.type || 'permanent';
+                
+                if (type === 'temporary') {
+                    const minutes = parseInt(req.query.expires) || 30;
+                    const tempData = this.qrGenerator.generateTempConnectionCode(minutes);
+                    
+                    // Store temporary code
+                    this.tempCodes.set(tempData.code, tempData);
+                    
+                    // Clean up expired codes
+                    setTimeout(() => {
+                        this.tempCodes.delete(tempData.code);
+                    }, minutes * 60 * 1000);
+                    
+                    res.json({
+                        qr_data: tempData.qrData,
+                        temp_code: tempData.code,
+                        expires_at: tempData.expiresAt,
+                        svg: this.qrGenerator.generateSVGQRCode(tempData.qrData)
+                    });
+                } else {
+                    const connectionData = this.qrGenerator.generateConnectionURI();
+                    
+                    res.json({
+                        qr_data: connectionData.qrData,
+                        uri: connectionData.uri,
+                        svg: this.qrGenerator.generateSVGQRCode(connectionData.qrData)
+                    });
+                }
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                res.status(500).json({ error: 'Failed to generate QR code' });
+            }
+        });
+
+        // Disconnect from peer
+        this.app.post('/api/disconnect/:nodeId', async (req, res) => {
+            try {
+                const { nodeId } = req.params;
+                
+                if (!this.networkManager) {
+                    return res.status(503).json({ error: 'P2P networking not available' });
+                }
+
+                this.networkManager.disconnectFromPeer(nodeId);
+                
+                res.json({
+                    success: true,
+                    message: 'Disconnected from peer'
+                });
+            } catch (error) {
+                console.error('Error disconnecting from peer:', error);
+                res.status(500).json({ error: 'Failed to disconnect from peer' });
+            }
+        });
+
+        // Serve main application
+        this.app.get('/', (req, res) => {
+            res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        });
+
+        // Health check
+        this.app.get('/health', (req, res) => {
+            res.json({ 
+                status: 'healthy', 
+                timestamp: new Date().toISOString(),
+                p2p_enabled: Boolean(this.networkManager),
+                connections: this.getConnectionCount()
+            });
+        });
+    }
+
+    // Handle peer events
+    handlePeerConnected(peer) {
+        // Update database
+        const stmt = this.db.prepare(`
+            UPDATE connections 
+            SET status = 'connected', last_seen = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE node_id = ?
+        `);
+        stmt.run(Date.now(), peer.nodeId);
+    }
+
+    handlePeerDisconnected(peer) {
+        // Update database
+        const stmt = this.db.prepare(`
+            UPDATE connections 
+            SET status = 'disconnected', last_seen = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE node_id = ?
+        `);
+        stmt.run(Date.now(), peer.nodeId);
+    }
+
+    async handleRemoteContent(data) {
+        try {
+            const { content, fromPeer, timestamp } = data;
+            
+            // Check if we already have this content
+            const existingStmt = this.db.prepare('SELECT id FROM posts WHERE id = ?');
+            if (existingStmt.get(content.id)) {
+                console.log(`Content ${content.id} already exists, skipping`);
+                return;
+            }
+
+            // Encrypt and store remote content
+            const encryptedContent = this.encryptData(JSON.stringify(content));
+            
+            const stmt = this.db.prepare(`
+                INSERT INTO posts (
+                    id, content_encrypted, timestamp, permissions, media_refs, 
+                    author_id, author_name, is_remote, sync_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'synced')
+            `);
+
+            stmt.run(
+                content.id,
+                encryptedContent,
+                content.timestamp,
+                content.permissions || 'friends_only',
+                content.media_refs,
+                content.author_id,
+                content.author_name,
+            );
+
+            console.log(`📥 Stored remote content from ${content.author_name}`);
+            
+            // Log sync activity
+            const logStmt = this.db.prepare(`
+                INSERT INTO sync_log (peer_id, content_id, action, timestamp, status)
+                VALUES (?, ?, 'received', ?, 'completed')
+            `);
+            logStmt.run(fromPeer, content.id, Date.now());
+
+        } catch (error) {
+            console.error('Error handling remote content:', error);
+        }
+    }
+
+    // Encrypt data using AES-256-GCM
+    encryptData(data) {
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipher('aes-256-gcm', this.masterKey);
+        cipher.setAutoPadding(true);
+        
+        let encrypted = cipher.update(data, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        
+        const authTag = cipher.getAuthTag();
+        
+        return Buffer.concat([
+            iv,
+            authTag,
+            Buffer.from(encrypted, 'hex')
+        ]);
+    }
+
+    // Decrypt data using AES-256-GCM
+    decryptData(encryptedBuffer) {
+        const iv = encryptedBuffer.slice(0, 16);
+        const authTag = encryptedBuffer.slice(16, 32);
+        const encrypted = encryptedBuffer.slice(32);
+        
+        const decipher = crypto.createDecipher('aes-256-gcm', this.masterKey);
+        decipher.setAuthTag(authTag);
+        
+        let decrypted = decipher.update(encrypted, null, 'utf8');
+        decrypted += decipher.final('utf8');
+        
+        return decrypted;
+    }
+
+    // Helper methods
+    getConnectionCount() {
+        const stmt = this.db.prepare('SELECT COUNT(*) as count FROM connections WHERE status = "connected"');
+        return stmt.get().count;
+    }
+
+    getPostCount() {
+        const stmt = this.db.prepare('SELECT COUNT(*) as count FROM posts');
+        return stmt.get().count;
+    }
+
+    // Start the server
+    async start() {
+        await this.initialize();
+        
+        this.server = this.app.listen(this.port, () => {
+            console.log(`\n🌟 KABOOMedia Node running on port ${this.port}`);
+            console.log(`📱 Web Interface: http://localhost:${this.port}`);
+            console.log(`🔗 P2P Port: ${this.port + 1}`);
+            console.log(`🔑 Node ID: ${this.nodeConfig.node_id}`);
+            console.log(`🌐 P2P Network: ${this.networkManager ? 'Enabled' : 'Disabled'}`);
+            console.log(`📊 API Status: http://localhost:${this.port}/api/status\n`);
+        });
+
+        // Graceful shutdown
+        process.on('SIGTERM', () => this.shutdown());
+        process.on('SIGINT', () => this.shutdown());
+    }
+
+    // Shutdown gracefully
+    async shutdown() {
+        console.log('\n🛑 Shutting down KABOOMedia Node...');
+        
+        if (this.networkManager) {
+            await this.networkManager.shutdown();
+        }
+        
+        if (this.server) {
+            this.server.close();
+        }
+        
+        if (this.db) {
+            this.db.close();
+        }
+        
+        console.log('✅ Shutdown complete');
+        process.exit(0);
+    }
+}
+
+// Start the application if this file is run directly
+if (require.main === module) {
+    const server = new KABOOMediaServer();
+    server.start().catch(console.error);
+}
+
+module.exports = KABOOMediaServer;
+
     // Initialize the application
     async initialize() {
         console.log('🚀 Initializing KABOOMedia Node...');
@@ -114,4 +725,8 @@ class KABOOMediaServer {
             );
 
             CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp DESC);
-            CREATE INDEX IF NOT EXISTS idx_posts_author
+            CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+            CREATE INDEX IF NOT EXISTS idx_connections_status ON connections(status);
+            CREATE INDEX IF NOT EXISTS idx_connections_permission ON connections(permission_level);
+            CREATE INDEX IF NOT EXISTS idx_sync_log_peer ON sync_log(peer_id);
+        `);
