@@ -1,0 +1,46 @@
+decentralized_social/
+├── core/
+│   ├── __init__.py
+│   ├── encryption.py          # AES-256 encryption engine
+│   ├── storage.py             # Local file system with sandboxing
+│   ├── web_server.py          # Built-in HTTP server
+│   ├── p2p_network.py         # Peer-to-peer networking
+│   ├── nat_traversal.py       # NAT traversal utilities
+│   └── security.py            # Security utilities and validation
+├── site_generator/
+│   ├── __init__.py
+│   ├── template_engine.py     # Dynamic web page generation
+│   ├── address_manager.py     # Dynamic address generation
+│   ├── qr_generator.py        # QR code generation
+│   └── interaction_handler.py # Comments and interactions
+├── registry/
+│   ├── __init__.py
+│   ├── client.py              # Registry client for local app
+│   ├── server.py              # Optional centralized registry server
+│   └── discovery.py           # User discovery service
+├── database/
+│   ├── __init__.py
+│   ├── local_db.py            # Local SQLite database management
+│   ├── models.py              # Data models
+│   └── migrations.py          # Database schema management
+├── ui/
+│   ├── __init__.py
+│   ├── web_interface.py       # Web-based UI served locally
+│   ├── cli_interface.py       # Command-line interface
+│   └── api_handlers.py        # REST API for UI interactions
+├── utils/
+│   ├── __init__.py
+│   ├── crypto_utils.py        # Cryptographic utilities
+│   ├── network_utils.py       # Network discovery and utilities
+│   ├── file_utils.py          # File handling utilities
+│   └── config.py              # Configuration management
+├── tests/
+│   ├── __init__.py
+│   ├── test_core/
+│   ├── test_site_generator/
+│   ├── test_registry/
+│   └── test_database/
+├── requirements.txt
+├── setup.py
+├── main.py                    # Main application entry point
+└── README.md
