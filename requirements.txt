@@ -1,13 +1,16 @@
 # requirements.txt
 cryptography>=41.0.0      # Modern encryption library
-sqlite3                   # Built into Python standard library
-http.server               # Built into Python standard library
-socketserver              # Built into Python standard library
-threading                 # Built into Python standard library
-json                      # Built into Python standard library
-urllib                    # Built into Python standard library
 qrcode[pil]>=7.4.2        # QR code generation
 pillow>=10.0.0            # Image processing for QR codes
 netifaces>=0.11.0         # Network interface discovery
 upnp-client>=0.0.8        # UPnP for NAT traversal (optional)
-flask>=2.3.0              # Lightweight web framework for UI
+flask>=2.3.0              # Lightweight web framework for UI (optional)
+jinja2>=3.1.0             # Template engine for HTML generation
+
+# Built-in Python modules (no installation needed):
+# sqlite3                   # Built into Python standard library
+# http.server               # Built into Python standard library
+# socketserver              # Built into Python standard library
+# threading                 # Built into Python standard library
+# json                      # Built into Python standard library
+# urllib                    # Built into Python standard library
