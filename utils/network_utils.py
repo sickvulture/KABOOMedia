@@ -346,3 +346,98 @@ class HTTPUtils:
             
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 content = response.read().decode('utf-8')
+                
+                return {
+                    'status_code': response.status,
+                    'headers': dict(response.headers),
+                    'content': content
+                }
+        
+        except urllib.error.HTTPError as e:
+            return {
+                'status_code': e.code,
+                'error': str(e),
+                'content': e.read().decode('utf-8') if e.fp else None
+            }
+        except Exception as e:
+            return {
+                'status_code': 0,
+                'error': str(e),
+                'content': None
+            }
+    
+    @staticmethod
+    def download_file(url: str, local_path: str, chunk_size: int = 8192) -> bool:
+        """Download file from URL to local path"""
+        try:
+            with urllib.request.urlopen(url) as response:
+                with open(local_path, 'wb') as f:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            return True
+        except Exception as e:
+            print(f"Download failed: {e}")
+            return False
+    
+    @staticmethod
+    def check_url_reachable(url: str, timeout: int = 5) -> bool:
+        """Check if URL is reachable"""
+        try:
+            urllib.request.urlopen(url, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+# Utility functions
+def get_network_status() -> Dict[str, any]:
+    """Get comprehensive network status"""
+    return {
+        'network_info': NetworkDiscovery.get_network_info(),
+        'internet_connected': ConnectionTester.test_internet_connectivity(),
+        'timestamp': time.time()
+    }
+
+def scan_local_network_for_peers(port: int = 9999) -> List[str]:
+    """Scan local network for other instances"""
+    peers = []
+    local_ips = NetworkDiscovery.get_all_local_ips()
+    
+    for local_ip in local_ips:
+        # Get network range
+        ip_parts = local_ip.split('.')
+        base_ip = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}"
+        
+        # Scan common IP ranges (this is a simple approach)
+        for i in range(1, 255):
+            test_ip = f"{base_ip}.{i}"
+            if test_ip != local_ip and NetworkDiscovery.is_port_open(test_ip, port, timeout=1):
+                peers.append(test_ip)
+    
+    return peers
+
+if __name__ == "__main__":
+    # Test network utilities
+    print("Testing network utilities...")
+    
+    # Test network discovery
+    local_ip = NetworkDiscovery.get_local_ip()
+    print(f"✓ Local IP: {local_ip}")
+    
+    all_ips = NetworkDiscovery.get_all_local_ips()
+    print(f"✓ All local IPs: {all_ips}")
+    
+    external_ip = NetworkDiscovery.get_external_ip()
+    print(f"✓ External IP: {external_ip}")
+    
+    # Test connectivity
+    internet_connected = ConnectionTester.test_internet_connectivity()
+    print(f"✓ Internet connectivity: {internet_connected}")
+    
+    # Test peer discovery (brief test)
+    discovery = PeerDiscovery(9999)
+    print(f"✓ Peer discovery initialized")
+    
+    print("Network utilities tested successfully!")
